@@ -1,0 +1,33 @@
+# Dependencies
+node_modules
+
+# Next.js build output
+.next
+out
+
+# Version control
+.git
+.gitignore
+
+# IDE
+.vscode
+.idea
+.cursor
+
+# Environment files (will be set in Dokploy)
+.env
+.env.*
+!.env.example
+
+# Misc
+README.md
+.prettierrc
+.eslintrc*
+eslint.config.mjs
+
+# Convex generated (will be regenerated during build)
+convex/_generated
+
+# OS files
+.DS_Store
+Thumbs.db

@@ -2,9 +2,15 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
-import { motion, AnimatePresence, useScroll, useTransform } from "framer-motion";
-import { Bookmark, MoveUpRight, Sparkles, Star, ArrowUp, Search } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Bookmark, MoveUpRight, ArrowUp, Search, Pencil, Trash2, Plus, LogIn, Star, Filter, X, ChevronRight, Zap, LayoutGrid, PenTool, Code, Image as ImageIcon, Music, BarChart, Hash } from "lucide-react";
+import { UserButton, useUser } from "@stackframe/stack";
+import { stackClientApp } from "@/stack/client";
 import { api } from "../convex/_generated/api";
+import cn from "classnames";
+import Link from "next/link";
+import { DashboardLayout } from "@/components/DashboardLayout";
+import { useSavedTools } from "@/lib/useSavedTools";
 
 type Tool = {
   _id: string;
@@ -17,49 +23,68 @@ type Tool = {
   logo: string;
   featured: boolean;
   upvotes: number;
+  status?: "online" | "offline" | "hold";
+  pricing?: string;
 };
 
 const baseCategories = ["All", "Copywriting", "Coding", "Image Gen", "Audio", "Analytics", "Productivity"];
+const initialFormState = {
+  title: "",
+  description: "",
+  category: "",
+  tags: "",
+  url: "",
+  logo: "",
+  featured: false,
+  upvotes: 0,
+};
 
 export default function Home() {
+  const user = useUser();
+  const isAdmin = user?.primaryEmail?.toLowerCase() === "ahoo11official@gmail.com";
+  const isLoggedIn = !!user;
+
   const [category, setCategory] = useState<string>("All");
+  const [tag, setTag] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [saved, setSaved] = useState<Set<string>>(new Set());
-  const [magnetic, setMagnetic] = useState({ x: 0, y: 0 });
+  const { saved, toggleSaved, isSaved } = useSavedTools();
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [quickForm, setQuickForm] = useState({ title: "", description: "" });
 
   const seedTools = useMutation(api.myFunctions.seedTools);
   const upvoteTool = useMutation(api.myFunctions.upvoteTool);
+  const createTool = useMutation(api.myFunctions.createTool);
+  const updateTool = useMutation(api.myFunctions.updateTool);
+  const deleteTool = useMutation(api.myFunctions.deleteTool);
 
   const data = useQuery(api.myFunctions.listTools, {
     category,
     search: search.trim() || undefined,
+    tag: tag || undefined,
+    includeAll: isAdmin ? true : undefined,
   });
 
   useEffect(() => {
     void seedTools({});
   }, [seedTools]);
 
-  const { scrollY } = useScroll();
-  const floatingY = useTransform(scrollY, [0, 400], [0, -16]);
-
   const tools = data?.tools ?? [];
-  const featured = data?.featured ?? null;
 
   const categories = useMemo(() => {
     const fromData = Array.from(new Set((data?.tools ?? []).map((t) => t.category)));
     return Array.from(new Set([...baseCategories, ...fromData]));
   }, [data?.tools]);
 
+  const tags = useMemo(() => {
+    const list = new Set<string>();
+    for (const t of data?.tools ?? []) {
+      t.tags.forEach((tagVal) => list.add(tagVal));
+    }
+    return Array.from(list).sort();
+  }, [data?.tools]);
+
   const handleSave = (id: string) => {
-    setSaved((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      return next;
-    });
+    toggleSaved(id);
   };
 
   const handleUpvote = async (id: string) => {
@@ -70,368 +95,504 @@ export default function Home() {
     }
   };
 
-  const handleMagneticMove = (e: React.MouseEvent<HTMLDivElement, MouseEvent>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - (rect.left + rect.width / 2);
-    const y = e.clientY - (rect.top + rect.height / 2);
-    setMagnetic({ x: x * 0.08, y: y * 0.08 });
+  const handleQuickAdd = async () => {
+    if (!isAdmin || !quickForm.title.trim()) return;
+    try {
+      const result = await createTool({
+        title: quickForm.title.trim(),
+        description: quickForm.description.trim(),
+        category: "General",
+        tags: [],
+        url: "",
+        logo: "✨",
+        featured: false,
+        upvotes: 0,
+      });
+      setQuickForm({ title: "", description: "" });
+      setShowAddModal(false);
+      // Navigate to the new tool page to complete details
+      if (result?.toolId) {
+        window.location.href = `/tool/${result.toolId}`;
+      }
+    } catch (error) {
+      console.error(error);
+    }
   };
 
-  const clearMagnetic = () => setMagnetic({ x: 0, y: 0 });
+  const handleDelete = async (id: string) => {
+    if (!isAdmin) return;
+    try {
+      await deleteTool({ toolId: id as any });
+    } catch (error) {
+      console.error(error);
+    }
+  };
 
   const loading = !data;
 
   return (
-    <div className="relative min-h-screen text-white overflow-hidden">
-      <RadialGlow />
-      <header className="sticky top-0 z-30 backdrop-blur-lg bg-black/40 border-b border-white/5">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-fuchsia-500 to-cyan-500 text-lg font-semibold shadow-lg shadow-fuchsia-500/30">
-              AI
-            </div>
-            <div>
-              <p className="text-sm text-white/60">Powered by Convex</p>
-              <p className="text-base font-semibold">Directory</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3 text-sm text-white/60">
-            <span className="hidden sm:flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1">
-              <Sparkles className="h-4 w-4 text-fuchsia-300" />
-              Live syncing via Convex
-            </span>
-            <a
-              href="https://www.convex.dev"
-              className="rounded-full bg-gradient-to-r from-fuchsia-500 to-cyan-500 px-4 py-2 text-sm font-semibold shadow-lg shadow-fuchsia-500/30"
-            >
-              Convex.dev
-            </a>
-          </div>
-        </div>
-      </header>
+    <DashboardLayout>
+      <div className="text-slate-100 font-sans selection:bg-indigo-500/30 p-6">
+        {!isLoggedIn && <Hero search={search} setSearch={setSearch} />}
 
-      <main className="relative mx-auto max-w-6xl px-4 pb-24 pt-10">
-        <section className="relative overflow-hidden rounded-3xl border border-white/10 bg-white/5 p-8 shadow-xl shadow-fuchsia-500/10">
-          <div className="pointer-events-none absolute inset-0 opacity-60">
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(147,84,255,0.3),transparent_35%)]" />
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_80%_10%,rgba(0,200,255,0.25),transparent_35%)]" />
-          </div>
-          <div className="relative grid gap-8 lg:grid-cols-2">
-            <div className="flex flex-col gap-4">
-              <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-3 py-1 text-xs font-semibold text-white/80 backdrop-blur">
-                <Sparkles className="h-4 w-4 text-fuchsia-300" />
-                Next.js + Tailwind + Framer Motion + Convex
-              </div>
-              <h1 className="text-4xl font-bold leading-tight sm:text-5xl">
-                Discover the Future of AI
-              </h1>
-              <p className="max-w-xl text-lg text-white/70">
-                A bento-style directory of the most dazzling AI products. Filter, hover, save, and upvote your favorites in real time.
-              </p>
-              <div className="flex flex-wrap gap-3 text-sm text-white/60">
-                <Badge>Glowing gradients</Badge>
-                <Badge>Glass cards</Badge>
-                <Badge>Micro-interactions</Badge>
-              </div>
-            </div>
-            <motion.div
-              style={{ y: floatingY }}
-              onMouseMove={handleMagneticMove}
-              onMouseLeave={clearMagnetic}
-              animate={{ x: magnetic.x, y: magnetic.y }}
-              transition={{ type: "spring", stiffness: 200, damping: 16 }}
-              className="relative rounded-2xl border border-white/10 bg-black/40 p-4 shadow-2xl shadow-cyan-500/20"
-            >
-              <div className="absolute inset-0 bg-gradient-to-br from-fuchsia-500/20 via-transparent to-cyan-400/20 blur-3xl" />
-              <div className="relative flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 px-4 py-3 shadow-inner">
-                <Search className="h-5 w-5 text-fuchsia-200" />
-                <input
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search AI tools, e.g. 'copy', 'vision', 'ops'"
-                  className="w-full bg-transparent text-base text-white placeholder:text-white/50 focus:outline-none"
-                />
-                <span className="rounded-full bg-white/10 px-3 py-1 text-xs text-white/70">⌘K</span>
-              </div>
-              <p className="mt-3 text-sm text-white/60">Floating, magnetic search follows your scroll.</p>
-            </motion.div>
-          </div>
-        </section>
+        <div className={cn("flex flex-col gap-6", !isLoggedIn && "mt-8")}>
+          <HorizontalFilters
+            categories={categories}
+            selectedCategory={category}
+            onSelectCategory={setCategory}
+            tags={tags}
+            selectedTag={tag}
+            onSelectTag={(value) => setTag((prev) => (prev === value ? null : value))}
+          />
 
-        <section className="mt-10">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-white/80">Explore by category</h2>
-            <span className="text-sm text-white/50">{tools.length} tools</span>
-          </div>
-          <div className="mt-4 flex snap-x gap-3 overflow-x-auto pb-3">
-            {categories.map((cat) => {
-              const active = cat === category;
-              return (
-                <button
-                  key={cat}
-                  onClick={() => setCategory(cat)}
-                  className={`group relative flex-shrink-0 snap-start rounded-full px-4 py-2 text-sm font-semibold transition-all ${
-                    active ? "text-white" : "text-white/70 hover:text-white"
-                  }`}
-                >
-                  <span
-                    className={`absolute inset-0 rounded-full blur-xl transition ${
-                      active ? "bg-gradient-to-r from-fuchsia-500/50 to-cyan-400/50 opacity-80" : "opacity-0"
-                    }`}
-                  />
-                  <span className="relative flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 backdrop-blur group-hover:border-fuchsia-400/40">
-                    <span className="h-1.5 w-1.5 rounded-full bg-gradient-to-r from-fuchsia-400 to-cyan-400" />
-                    {cat}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </section>
-
-        <FeaturedSection featured={featured} loading={loading} onUpvote={handleUpvote} saved={saved} onSave={handleSave} />
-
-        <section className="mt-10">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-white/80">Spotlight grid</h2>
-            <div className="text-sm text-white/60">Bento layout with hover shimmer</div>
-          </div>
-
-          {loading ? (
-            <SkeletonGrid />
-          ) : (
-            <div className="mt-6 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-              {tools.map((tool, idx) => (
-                <ToolCard
-                  key={tool._id}
-                  tool={tool}
-                  layout={gridClass(idx)}
-                  saved={saved.has(tool._id)}
-                  onSave={() => handleSave(tool._id)}
-                  onUpvote={() => handleUpvote(tool._id)}
-                />
-              ))}
+          {isAdmin && (
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setShowAddModal(true)}
+                className="inline-flex items-center gap-2 rounded-full bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-indigo-600/20 hover:bg-indigo-500 transition-all"
+              >
+                <Plus className="h-4 w-4" />
+                Add New Tool
+              </button>
+              <span className="text-xs text-amber-400 font-medium uppercase tracking-wide flex items-center gap-1.5">
+                <Zap className="h-3.5 w-3.5 fill-current" />
+                Admin Mode
+              </span>
             </div>
           )}
-        </section>
-      </main>
-    </div>
-  );
-}
 
-function RadialGlow() {
-  return (
-    <div className="pointer-events-none absolute inset-0 -z-10">
-      <div className="absolute left-1/2 top-[-10%] h-[420px] w-[420px] -translate-x-1/2 rounded-full bg-fuchsia-600/20 blur-[140px]" />
-      <div className="absolute right-[15%] top-[20%] h-[320px] w-[320px] rounded-full bg-cyan-500/15 blur-[120px]" />
-      <div className="absolute left-[5%] bottom-[10%] h-[280px] w-[280px] rounded-full bg-indigo-500/15 blur-[120px]" />
-    </div>
-  );
-}
-
-function Badge({ children }: { children: React.ReactNode }) {
-  return (
-    <span className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-xs font-semibold text-white/70 backdrop-blur">
-      {children}
-    </span>
-  );
-}
-
-function FeaturedSection({
-  featured,
-  loading,
-  onUpvote,
-  saved,
-  onSave,
-}: {
-  featured: Tool | null;
-  loading: boolean;
-  onUpvote: (id: string) => void;
-  saved: Set<string>;
-  onSave: (id: string) => void;
-}) {
-  return (
-    <section className="mt-10">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Star className="h-5 w-5 text-amber-300" />
-          <h2 className="text-lg font-semibold text-white/80">Tool of the Week</h2>
-        </div>
-        <span className="text-sm text-white/60">Carousel-style feature</span>
-      </div>
-      <div className="mt-4">
-        {loading ? (
-          <div className="h-56 w-full rounded-2xl border border-white/10 bg-white/5 shimmer" />
-        ) : featured ? (
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={featured._id}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              transition={{ duration: 0.45, ease: "easeOut" }}
-              className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-white/10 via-white/5 to-black/40 p-6 shadow-2xl"
-            >
-              <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(255,255,255,0.08),transparent_40%)]" />
-              <div className="absolute inset-0 bg-[radial-gradient(circle_at_80%_30%,rgba(0,255,245,0.08),transparent_40%)]" />
-              <div className="relative grid gap-6 lg:grid-cols-[1fr,260px]">
-                <div className="flex flex-col gap-3">
-                  <div className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-xs text-white/70">
-                    Featured · {featured.category}
-                  </div>
-                  <h3 className="text-2xl font-semibold">{featured.title}</h3>
-                  <p className="text-white/70">{featured.description}</p>
-                  <div className="flex flex-wrap gap-2 text-xs text-white/70">
-                    {featured.tags.map((tag) => (
-                      <span key={tag} className="rounded-full bg-white/10 px-3 py-1">
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
-                  <div className="mt-4 flex flex-wrap gap-3">
+          {/* Quick Add Modal */}
+          <AnimatePresence>
+            {showAddModal && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+                onClick={() => setShowAddModal(false)}
+              >
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                  onClick={(e) => e.stopPropagation()}
+                  className="w-full max-w-lg rounded-2xl border border-white/10 bg-[#131728] p-6 shadow-2xl"
+                >
+                  <div className="flex items-center justify-between mb-6">
+                    <h2 className="text-xl font-semibold text-white">Add New Tool</h2>
                     <button
-                      className="group inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-fuchsia-500 to-cyan-500 px-4 py-2 text-sm font-semibold shadow-lg shadow-fuchsia-500/30 transition hover:scale-[1.02]"
-                      onClick={() => onUpvote(featured._id)}
+                      onClick={() => setShowAddModal(false)}
+                      className="rounded-full p-2 text-slate-400 hover:bg-white/5 hover:text-white transition-colors"
                     >
-                      <ArrowUp className="h-4 w-4" />
-                      Upvote ({featured.upvotes})
-                    </button>
-                    <a
-                      href={featured.url}
-                      className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white/80 transition hover:border-fuchsia-400/50"
-                    >
-                      Visit
-                      <MoveUpRight className="h-4 w-4" />
-                    </a>
-                    <button
-                      onClick={() => onSave(featured._id)}
-                      className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition ${
-                        saved.has(featured._id)
-                          ? "border-amber-300/60 bg-amber-200/10 text-amber-100"
-                          : "border-white/10 bg-white/5 text-white/70 hover:border-fuchsia-300/50"
-                      }`}
-                    >
-                      <Bookmark className="h-4 w-4" />
-                      {saved.has(featured._id) ? "Saved" : "Save"}
+                      <X className="h-5 w-5" />
                     </button>
                   </div>
-                </div>
-                <div className="relative flex items-center justify-center">
-                  <div className="relative flex h-44 w-full items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-black/30 shadow-inner">
-                    <div className="absolute inset-0 shimmer opacity-40" />
-                    <div className="relative flex h-28 w-28 items-center justify-center rounded-2xl bg-gradient-to-br from-fuchsia-500 via-cyan-400 to-blue-500 text-4xl shadow-xl shadow-cyan-500/30">
-                      {featured.logo}
+
+                  <div className="space-y-4">
+                    <div>
+                      <label className="mb-1.5 block text-xs font-medium text-slate-400">Title *</label>
+                      <input
+                        value={quickForm.title}
+                        onChange={(e) => setQuickForm((f) => ({ ...f, title: e.target.value }))}
+                        placeholder="Enter tool name..."
+                        className="w-full rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-sm text-white placeholder:text-slate-600 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        autoFocus
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-1.5 block text-xs font-medium text-slate-400">Description</label>
+                      <textarea
+                        value={quickForm.description}
+                        onChange={(e) => setQuickForm((f) => ({ ...f, description: e.target.value }))}
+                        placeholder="Brief description of the tool..."
+                        rows={4}
+                        className="w-full rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-sm text-white placeholder:text-slate-600 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 resize-none"
+                      />
                     </div>
                   </div>
-                </div>
-              </div>
-            </motion.div>
-          </AnimatePresence>
-        ) : (
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-6 text-white/60">
-            No featured tool yet.
-          </div>
-        )}
-      </div>
-    </section>
-  );
-}
 
-function gridClass(idx: number) {
-  const mod = idx % 6;
-  if (mod === 0) return "md:col-span-2";
-  if (mod === 1) return "lg:row-span-2";
-  if (mod === 2) return "md:col-span-2";
-  return "";
+                  <p className="mt-4 text-xs text-slate-500">
+                    You can add more details (category, tags, URL, etc.) after saving on the tool page.
+                  </p>
+
+                  <div className="mt-6 flex items-center justify-end gap-3">
+                    <button
+                      onClick={() => setShowAddModal(false)}
+                      className="rounded-full px-5 py-2.5 text-sm font-medium text-slate-400 hover:text-white transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleQuickAdd}
+                      disabled={!quickForm.title.trim()}
+                      className="inline-flex items-center gap-2 rounded-full bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-indigo-600/20 hover:bg-indigo-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <Plus className="h-4 w-4" />
+                      Save & Continue
+                    </button>
+                  </div>
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <div className="space-y-4">
+            <div className="flex items-center justify-between px-2">
+              <h2 className="text-xl font-semibold text-white tracking-tight">
+                {category === "All" ? "All Partners" : category}
+                <span className="ml-2 text-sm font-normal text-slate-400">{tools.length} results</span>
+              </h2>
+            </div>
+
+            {loading ? (
+              <SkeletonGrid />
+            ) : (
+              <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                {tools.map((tool) => (
+                  <ToolCard
+                    key={tool._id}
+                    tool={tool}
+                    saved={isSaved(tool._id)}
+                    onSave={() => handleSave(tool._id)}
+                    onUpvote={() => handleUpvote(tool._id)}
+                    isAdmin={isAdmin}
+                    onDelete={() => handleDelete(tool._id)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </DashboardLayout>
+  );
 }
 
 function ToolCard({
   tool,
-  layout,
   saved,
   onSave,
   onUpvote,
+  isAdmin,
+  onDelete,
 }: {
   tool: Tool;
-  layout?: string;
   saved: boolean;
   onSave: () => void;
   onUpvote: () => void;
+  isAdmin?: boolean;
+  onDelete?: () => void;
 }) {
   return (
     <motion.div
-      whileHover={{ y: -6, scale: 1.01 }}
-      transition={{ duration: 0.2 }}
-      className={`group relative overflow-hidden rounded-2xl border border-white/10 bg-white/5 p-5 shadow-lg shadow-fuchsia-500/10 ${layout ?? ""}`}
+      whileHover={{ y: -4, scale: 1.02 }}
+      className="group relative flex flex-col justify-between overflow-hidden rounded-2xl border border-white/10 bg-[#1A1A1A] p-6 shadow-xl transition-all hover:border-indigo-500/50 hover:shadow-2xl hover:shadow-indigo-500/20"
     >
-      <div className="absolute inset-0 opacity-0 transition duration-300 group-hover:opacity-100">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(147,84,255,0.18),transparent_35%)]" />
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_80%_30%,rgba(0,255,245,0.18),transparent_35%)]" />
-      </div>
-      <div className="relative flex items-start justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-fuchsia-500/20 to-cyan-400/20 text-2xl">
-            {tool.logo}
-          </div>
-          <div>
-            <h3 className="text-lg font-semibold text-white">{tool.title}</h3>
-            <p className="text-xs text-white/50">{tool.category}</p>
+      {/* Background Gradient Effect */}
+      <div className="absolute inset-0 bg-gradient-to-b from-white/5 to-transparent opacity-0 transition-opacity group-hover:opacity-100 pointer-events-none" />
+
+      <div>
+        <div className="relative flex items-start justify-between">
+          <Link href={`/tool/${tool._id}`} className="block">
+            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-[#252525] border border-white/5 text-4xl shadow-inner transition-transform group-hover:scale-110">
+              {tool.logo}
+            </div>
+          </Link>
+          <div className="flex flex-col items-end gap-2">
+            <div className="flex gap-2">
+              {tool.featured && (
+                <div className="flex items-center justify-center rounded-full bg-amber-500/10 p-1.5 text-amber-400 ring-1 ring-amber-500/20">
+                  <Star className="h-3.5 w-3.5 fill-current" />
+                </div>
+              )}
+              <button
+                onClick={onSave}
+                className={cn(
+                  "rounded-full p-2 transition-colors",
+                  saved ? "text-indigo-400 bg-indigo-500/10" : "text-slate-500 hover:text-slate-300 hover:bg-white/5"
+                )}
+              >
+                <Bookmark className={cn("h-4 w-4", saved && "fill-current")} />
+              </button>
+            </div>
+            {/* Pricing Badge */}
+            {tool.pricing && (
+              <span className={cn(
+                "rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide border",
+                tool.pricing === "Free" ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" :
+                  tool.pricing === "Paid" ? "bg-rose-500/10 text-rose-400 border-rose-500/20" :
+                    "bg-blue-500/10 text-blue-400 border-blue-500/20"
+              )}>
+                {tool.pricing}
+              </span>
+            )}
           </div>
         </div>
-        <button
-          onClick={onSave}
-          className={`rounded-full border px-2 py-2 transition ${
-            saved ? "border-amber-300/60 bg-amber-200/10 text-amber-100" : "border-white/10 bg-white/5 text-white/60 hover:border-fuchsia-300/50"
-          }`}
-        >
-          <Bookmark className="h-4 w-4" />
-        </button>
+
+        <Link href={`/tool/${tool._id}`} className="block mt-5 group-hover:cursor-pointer">
+          <div className="flex items-center gap-2">
+            <h3 className="text-xl font-bold text-white tracking-tight transition-colors group-hover:text-indigo-400">{tool.title}</h3>
+            {isAdmin && tool.status && tool.status !== "online" && (
+              <span className={cn(
+                "rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase",
+                tool.status === "hold" ? "bg-amber-500/10 text-amber-400 ring-1 ring-amber-500/20" : "bg-red-500/10 text-red-400 ring-1 ring-red-500/20"
+              )}>
+                {tool.status}
+              </span>
+            )}
+          </div>
+          <p className="text-xs font-bold text-indigo-400 mt-1 uppercase tracking-wider">{tool.category}</p>
+          <p className="mt-3 text-sm leading-relaxed text-[#A0A0A0] line-clamp-3 font-medium">{tool.description}</p>
+        </Link>
+
+        <div className="mt-5 flex flex-wrap gap-2">
+          {tool.tags.slice(0, 3).map((tag) => (
+            <span key={tag} className="rounded-md bg-[#252525] px-2.5 py-1 text-[11px] font-medium text-slate-400 border border-white/5 group-hover:border-white/10 transition-colors">
+              {tag}
+            </span>
+          ))}
+        </div>
       </div>
-      <p className="mt-3 text-sm text-white/70 line-clamp-2">{tool.description}</p>
-      <div className="mt-4 flex flex-wrap gap-2 text-[11px] text-white/70">
-        {tool.tags.map((tag) => (
-          <span key={tag} className="rounded-full bg-white/10 px-2 py-1">
-            {tag}
-          </span>
-        ))}
-      </div>
-      <div className="mt-4 flex items-center justify-between">
+
+      <div className="mt-6 pt-4 border-t border-white/5 flex items-center justify-between gap-3">
         <button
           onClick={onUpvote}
-          className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-white/80 transition hover:border-fuchsia-400/50"
+          className="group/upvote flex items-center gap-1.5 text-xs font-medium text-slate-400 transition-colors hover:text-white"
         >
-          <ArrowUp className="h-4 w-4" />
-          Upvote {tool.upvotes}
+          <div className="flex items-center justify-center rounded-md bg-[#252525] p-1.5 group-hover/upvote:bg-indigo-500 group-hover/upvote:text-white transition-colors">
+            <ArrowUp className="h-3.5 w-3.5" />
+          </div>
+          <span>{tool.upvotes}</span>
         </button>
-        <a
-          href={tool.url}
-          className="inline-flex items-center gap-1 text-sm font-semibold text-white hover:text-fuchsia-200"
-        >
-          Visit
-          <MoveUpRight className="h-4 w-4" />
-        </a>
+
+        <div className="flex items-center gap-3">
+          {isAdmin && (
+            <div className="flex gap-1">
+              <Link href={`/tool/${tool._id}`} className="p-1.5 text-slate-400 hover:text-amber-400 transition-colors">
+                <Pencil className="h-3.5 w-3.5" />
+              </Link>
+              <button onClick={onDelete} className="p-1.5 text-slate-400 hover:text-red-400 transition-colors">
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          )}
+          <a
+            href={tool.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 rounded-full bg-white px-4 py-2 text-xs font-bold text-slate-900 transition-transform hover:scale-105 active:scale-95 shadow-lg shadow-white/10"
+          >
+            Visit
+            <MoveUpRight className="h-3.5 w-3.5" />
+          </a>
+        </div>
       </div>
     </motion.div>
   );
 }
 
+function Hero({ search, setSearch }: { search: string; setSearch: (v: string) => void }) {
+  return (
+    <section className="relative mt-8 mb-20 flex flex-col items-center text-center">
+      {/* Mesh Gradient Background */}
+      <div className="absolute inset-0 -z-10 top-[-50%] overflow-hidden pointer-events-none select-none">
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[1000px] h-[500px] bg-indigo-600/20 blur-[100px] rounded-full mix-blend-screen opacity-50" />
+        <div className="absolute top-[10%] left-[20%] w-[600px] h-[400px] bg-purple-500/10 blur-[80px] rounded-full mix-blend-screen opacity-40" />
+        <div className="absolute top-[10%] right-[20%] w-[600px] h-[400px] bg-cyan-500/10 blur-[80px] rounded-full mix-blend-screen opacity-40" />
+      </div>
+
+      <div className="relative z-10 max-w-2xl px-4">
+        <h1 className="text-4xl sm:text-6xl font-bold text-white tracking-tight mb-6">
+          Find your perfect <br />
+          <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 via-purple-400 to-cyan-400 animate-gradient-x">
+            growth partner
+          </span>
+        </h1>
+        <p className="text-lg sm:text-xl text-slate-400 mb-10 max-w-xl mx-auto leading-relaxed">
+          Connect with verified experts to accelerate your product strategy.
+        </p>
+      </div>
+
+      {/* Glass Dock Search */}
+      <div className="glass-dock sticky top-20 z-40 flex w-full max-w-xl items-center gap-3 rounded-2xl px-5 py-4 transition-all focus-within:ring-2 focus-within:ring-indigo-500/50 border border-indigo-500/20 shadow-lg shadow-indigo-500/10">
+        <Search className="h-5 w-5 text-indigo-400" />
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search partners..."
+          className="w-full bg-transparent text-lg text-white placeholder:text-slate-500 focus:outline-none"
+        />
+        {search && (
+          <button onClick={() => setSearch("")} className="text-slate-500 hover:text-white transition-colors">
+            <X className="h-4 w-4" />
+          </button>
+        )}
+      </div>
+
+      {/* Social Proof */}
+      <div className="mt-6 flex items-center gap-2 text-sm text-slate-500 animate-fade-in-up">
+        <div className="flex -space-x-2 mr-2">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="h-6 w-6 rounded-full border-2 border-[#0A0A0C] bg-slate-800 flex items-center justify-center overflow-hidden">
+              <div className={`w-full h-full bg-gradient-to-br ${i === 1 ? 'from-indigo-500 to-purple-500' : i === 2 ? 'from-cyan-500 to-blue-500' : 'from-emerald-500 to-teal-500'} opacity-80`} />
+            </div>
+          ))}
+        </div>
+        <p>
+          Trusted by <span className="text-slate-300 font-medium">5,000+ founders</span>.
+          <span className="text-slate-300 font-medium ml-1">150+ tools</span> added this week.
+        </p>
+      </div>
+    </section>
+  );
+}
+
+function HorizontalFilters({
+  categories,
+  selectedCategory,
+  onSelectCategory,
+  tags,
+  selectedTag,
+  onSelectTag,
+}: {
+  categories: string[];
+  selectedCategory: string;
+  onSelectCategory: (v: string) => void;
+  tags: string[];
+  selectedTag: string | null;
+  onSelectTag: (v: string) => void;
+}) {
+  const [showFilters, setShowFilters] = useState(false);
+
+  const categoryIcons: Record<string, any> = {
+    "All": LayoutGrid,
+    "Copywriting": PenTool,
+    "Coding": Code,
+    "Image Gen": ImageIcon,
+    "Audio": Music,
+    "Analytics": BarChart,
+    "Productivity": Zap,
+  };
+
+  return (
+    <div className="relative flex items-center gap-3">
+      {/* Categories Row */}
+      <div className="no-scrollbar flex flex-1 items-center gap-2 overflow-x-auto pb-2 px-1 mask-linear-fade">
+        {categories.map((cat) => {
+          const Icon = categoryIcons[cat] || Hash;
+          const isActive = selectedCategory === cat;
+          return (
+            <button
+              key={cat}
+              onClick={() => onSelectCategory(cat)}
+              className={cn(
+                "group flex items-center gap-2 whitespace-nowrap rounded-full px-4 py-2 text-sm font-medium transition-all border",
+                isActive
+                  ? "bg-white/10 border-indigo-500/50 text-white shadow-[0_0_20px_rgba(99,102,241,0.3)]"
+                  : "border-transparent bg-white/5 text-slate-400 hover:bg-white/10 hover:text-white hover:border-white/10"
+              )}
+            >
+              <Icon className={cn("h-4 w-4 transition-colors", isActive ? "text-indigo-400" : "text-slate-500 group-hover:text-slate-300")} />
+              {cat}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Filter Button & Dropdown */}
+      <div className="relative z-20">
+        <button
+          onClick={() => setShowFilters(!showFilters)}
+          className={cn(
+            "flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-all border",
+            showFilters || selectedTag
+              ? "bg-white/10 border-indigo-500/50 text-white shadow-[0_0_20px_rgba(99,102,241,0.3)]"
+              : "border-transparent bg-white/5 text-slate-400 hover:bg-white/10 hover:text-white hover:border-white/10"
+          )}
+        >
+          <Filter className="h-4 w-4" />
+          <span>Filters</span>
+          {selectedTag && (
+            <span className="ml-1 flex h-5 w-5 items-center justify-center rounded-full bg-indigo-500 text-[10px] text-white">
+              1
+            </span>
+          )}
+        </button>
+
+        <AnimatePresence>
+          {showFilters && (
+            <>
+              <div className="fixed inset-0 z-10" onClick={() => setShowFilters(false)} />
+              <motion.div
+                initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                className="absolute right-0 top-full mt-2 w-72 rounded-2xl border border-white/10 bg-[#131728] p-4 shadow-2xl z-20 ring-1 ring-white/5"
+              >
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-semibold text-white">Filter by Tags</h3>
+                  {selectedTag && (
+                    <button
+                      onClick={() => {
+                        onSelectTag(selectedTag); // This toggles it off based on parent logic
+                        setShowFilters(false);
+                      }}
+                      className="text-xs text-indigo-400 hover:text-indigo-300"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-2 max-h-[300px] overflow-y-auto custom-scrollbar">
+                  {tags.map((t) => (
+                    <button
+                      key={t}
+                      onClick={() => {
+                        onSelectTag(t);
+                        // Optional: keep open or close? Let's keep open for multiple selection if supported, but here it's single select.
+                        // User might want to explore. Let's keep it open or close. 
+                        // Usually single select closes. But let's leave it open for better UX if they change mind.
+                        // Actually, let's close it for now to be clean.
+                        setShowFilters(false);
+                      }}
+                      className={cn(
+                        "rounded-md px-3 py-1.5 text-xs font-medium transition-all border",
+                        selectedTag === t
+                          ? "border-indigo-500/50 bg-indigo-500/10 text-indigo-300"
+                          : "border-white/5 bg-white/5 text-slate-400 hover:bg-white/10 hover:text-white hover:border-white/10"
+                      )}
+                    >
+                      {t}
+                    </button>
+                  ))}
+                  {tags.length === 0 && (
+                    <p className="text-xs text-slate-500 py-2">No tags available for this category.</p>
+                  )}
+                </div>
+              </motion.div>
+            </>
+          )}
+        </AnimatePresence>
+      </div>
+    </div>
+  );
+}
+
 function SkeletonGrid() {
   return (
-    <div className="mt-6 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-      {Array.from({ length: 6 }).map((_, idx) => (
-        <div key={idx} className={`relative overflow-hidden rounded-2xl border border-white/10 bg-white/5 p-5 ${gridClass(idx)}`}>
-          <div className="absolute inset-0 shimmer opacity-30" />
-          <div className="relative flex items-center gap-3">
-            <div className="h-12 w-12 rounded-xl bg-white/10" />
-            <div className="flex-1 space-y-2">
-              <div className="h-4 w-32 rounded bg-white/10" />
-              <div className="h-3 w-20 rounded bg-white/10" />
-            </div>
+    <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+      {Array.from({ length: 8 }).map((_, idx) => (
+        <div key={idx} className="relative overflow-hidden rounded-2xl border border-white/5 bg-white/5 p-6 h-[280px]">
+          <div className="absolute inset-0 shimmer opacity-20" />
+          <div className="flex items-start justify-between">
+            <div className="h-14 w-14 rounded-xl bg-white/10" />
+            <div className="h-8 w-8 rounded-full bg-white/10" />
           </div>
-          <div className="mt-4 h-12 w-full rounded bg-white/10" />
-          <div className="mt-4 flex gap-2">
-            <div className="h-6 w-16 rounded-full bg-white/10" />
-            <div className="h-6 w-14 rounded-full bg-white/10" />
+          <div className="mt-6 space-y-3">
+            <div className="h-5 w-3/4 rounded bg-white/10" />
+            <div className="h-3 w-1/4 rounded bg-white/10" />
+            <div className="h-16 w-full rounded bg-white/5" />
           </div>
         </div>
       ))}
