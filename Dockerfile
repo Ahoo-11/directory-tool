@@ -41,9 +41,13 @@ ENV NEXT_TELEMETRY_DISABLED=1
 # Build the application
 # We use a conditional to deploy Convex functions if the key is present
 RUN if [ -n "$CONVEX_DEPLOY_KEY" ]; then \
+      echo "Generating Convex types..." && \
+      npx convex codegen && \
       echo "Deploying Convex functions..." && \
       npx convex deploy --cmd "npm run build"; \
     else \
+      echo "Generating Convex types..." && \
+      npx convex codegen && \
       echo "Warning: CONVEX_DEPLOY_KEY not found, skipping convex deploy and running standard build..." && \
       npm run build; \
     fi
