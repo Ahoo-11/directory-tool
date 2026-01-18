@@ -22,17 +22,29 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# Build-time environment variables for Convex
+# Build-time environment variables
+# These MUST be passed as Build Arguments in Dokploy
 ARG CONVEX_DEPLOY_KEY
 ARG NEXT_PUBLIC_CONVEX_URL
+ARG NEXT_PUBLIC_STACK_PROJECT_ID
+ARG NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY
 
+# Set them as ENV so they are available to the build scripts
 ENV CONVEX_DEPLOY_KEY=${CONVEX_DEPLOY_KEY}
 ENV NEXT_PUBLIC_CONVEX_URL=${NEXT_PUBLIC_CONVEX_URL}
+ENV NEXT_PUBLIC_STACK_PROJECT_ID=${NEXT_PUBLIC_STACK_PROJECT_ID}
+ENV NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=${NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY}
 
-# Deploy Convex functions (if deploy key is provided)
+# Disable Next.js telemetry during build
+ENV NEXT_TELEMETRY_DISABLED=1
+
+# Build the application
+# We use a conditional to deploy Convex functions if the key is present
 RUN if [ -n "$CONVEX_DEPLOY_KEY" ]; then \
+      echo "Deploying Convex functions..." && \
       npx convex deploy --cmd "npm run build"; \
     else \
+      echo "Warning: CONVEX_DEPLOY_KEY not found, skipping convex deploy and running standard build..." && \
       npm run build; \
     fi
 
@@ -41,6 +53,7 @@ FROM base AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
 
 # Create a non-root user
 RUN addgroup --system --gid 1001 nodejs
