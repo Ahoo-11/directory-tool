@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
 
 :root {
   --background: #ffffff;
@@ -12,21 +13,74 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 body {
   color: var(--foreground);
-  background: radial-gradient(circle at 50% 0%, #1a1f35 0%, transparent 60%),
-    radial-gradient(circle at 85% 30%, rgba(99, 102, 241, 0.08) 0%, transparent 40%),
-    #0A0A0C;
+  background: #f7f7f5;
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
+}
+
+.dark body {
+  background: #0f1014;
+  color: #fafafa;
+}
+
+.dark .public-home {
+  background: #0f1014;
+  color: #fafafa;
+}
+
+.dark .public-shell {
+  background: #0f1014;
+  color: #fafafa;
+}
+
+.dark .public-header {
+  background: rgba(15, 16, 20, 0.92);
+  border-color: #27272a;
+}
+
+.dark .public-logo-mark {
+  background: #fafafa;
+  color: #09090b;
+}
+
+.dark .public-title {
+  color: #fafafa;
+}
+
+.dark .public-muted {
+  color: #a1a1aa;
+}
+
+.dark .public-divider,
+.dark .public-card-divider {
+  border-color: #27272a;
+}
+
+.dark .public-control,
+.dark .public-popover,
+.dark .public-tool-card,
+.dark .public-secondary-button {
+  background: #181a20;
+  border-color: #27272a;
+  color: #f4f4f5;
+}
+
+.dark .public-control::placeholder {
+  color: #71717a;
+}
+
+.dark .public-tool-card:hover,
+.dark .public-secondary-button:hover {
+  border-color: #3f3f46;
+  background: #1f2229;
+}
+
+.dark .public-tool-icon {
+  background: #111318;
+  border-color: #3f3f46;
 }
 
 .glass-surface {

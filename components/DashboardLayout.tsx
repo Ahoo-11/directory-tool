@@ -19,27 +19,33 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <div className="min-h-screen bg-[#0A0A0C]">
+    <div className={isLoggedIn ? "min-h-screen bg-[#0A0A0C]" : "public-shell min-h-screen bg-[#f7f7f5] text-zinc-950 dark:bg-[#0f1014] dark:text-zinc-50"}>
       {/* Sidebar - only for logged in users */}
       {isLoggedIn && <Sidebar />}
 
       {/* Main Content Area */}
       <div className={isLoggedIn ? "pl-64" : ""}>
         {/* Top Bar */}
-        <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-white/5 bg-[#0A0A0C]/80 px-6 backdrop-blur-xl">
+        <header
+          className={
+            isLoggedIn
+              ? "sticky top-0 z-30 flex h-16 items-center justify-between border-b border-white/5 bg-[#0A0A0C]/80 px-6 backdrop-blur-xl"
+              : "public-header sticky top-0 z-30 flex h-16 items-center justify-between border-b border-zinc-200 bg-[#f7f7f5]/90 px-5 backdrop-blur-xl dark:border-zinc-800 dark:bg-[#0f1014]/90"
+          }
+        >
           <div className="flex items-center gap-4">
             {/* Logo for non-logged in users */}
             {!isLoggedIn && (
               <Link href="/" className="flex items-center gap-3 mr-4">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white shadow-lg shadow-indigo-500/25 group">
+                <div className="public-logo-mark flex h-8 w-8 items-center justify-center rounded-md bg-zinc-950 text-white shadow-sm group dark:bg-white dark:text-zinc-950">
                   <div className="relative">
-                    <span className="font-bold text-xl tracking-tighter">A</span>
-                    <TrendingUp className="absolute -top-1 -right-2.5 h-3.5 w-3.5 text-cyan-300 stroke-[3px]" />
+                    <span className="font-bold text-sm tracking-tighter">A</span>
+                    <TrendingUp className="absolute -top-1 -right-2 h-3 w-3 text-indigo-300 stroke-[3px]" />
                   </div>
                 </div>
                 <div className="flex flex-col">
-                  <span className="text-base font-bold text-white tracking-tight">Antigravity</span>
-                  <span className="text-[10px] text-slate-500 uppercase tracking-wider font-medium">Directory</span>
+                  <span className="public-title text-sm font-semibold text-zinc-950 tracking-tight dark:text-zinc-50">Antigravity</span>
+                  <span className="public-muted text-[10px] text-zinc-500 uppercase tracking-wider font-medium dark:text-zinc-500">Directory</span>
                 </div>
               </Link>
             )}
@@ -64,16 +70,24 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
             )}
 
             {/* Submit Tool Button */}
-            <button className="hidden sm:flex items-center gap-2 rounded-xl bg-white/5 px-4 py-2 text-sm font-medium text-white hover:bg-white/10 transition-colors border border-white/5">
-              <Plus className="h-4 w-4" />
-              Submit Tool
-            </button>
+            {isLoggedIn ? (
+              <button className="hidden sm:flex items-center gap-2 rounded-xl bg-white/5 px-4 py-2 text-sm font-medium text-white hover:bg-white/10 transition-colors border border-white/5">
+                <Plus className="h-4 w-4" />
+                Submit Tool
+              </button>
+            ) : (
+              null
+            )}
 
             {/* Theme Toggle */}
             {mounted && (
               <button
                 onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-                className="rounded-xl p-2 text-slate-400 transition-colors hover:bg-white/5 hover:text-white"
+                className={
+                  isLoggedIn
+                    ? "rounded-xl p-2 text-slate-400 transition-colors hover:bg-white/5 hover:text-white"
+                    : "rounded-md p-2 text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-950 dark:text-zinc-400 dark:hover:bg-zinc-900 dark:hover:text-zinc-50"
+                }
               >
                 {theme === "dark" ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
               </button>
@@ -82,7 +96,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
             {!user ? (
               <a
                 href={stackClientApp.urls.signIn}
-                className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-indigo-500/25 transition-transform hover:scale-105 active:scale-95"
+                className="rounded-md bg-[#4f63d8] px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#4054c9]"
               >
                 Sign In
               </a>
