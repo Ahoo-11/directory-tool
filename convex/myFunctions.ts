@@ -1,23 +1,16 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-
-const ADMIN_EMAIL = "ahoo11official@gmail.com";
-
-function assertAdmin(email: string | undefined | null) {
-  if (!email || email.toLowerCase() !== ADMIN_EMAIL) {
-    throw new Error("Admin access required");
-  }
-}
+import { ADMIN_EMAIL, assertAdmin } from "./lib/auth";
 
 const sampleTools: Array<{
   title: string;
   description: string;
   category: string;
+  type?: string;
   tags: string[];
   url: string;
   logo: string;
   featured: boolean;
-  upvotes: number;
   status: "online" | "offline" | "hold";
   pricing?: string;
 }> = [
@@ -25,11 +18,11 @@ const sampleTools: Array<{
     title: "Nebula Copy",
     description: "AI-native copy hub with brand voice memory and instant briefs.",
     category: "Copywriting",
+    type: "Web App",
     tags: ["copy", "marketing", "voice"],
     url: "https://example.com/nebula",
     logo: "🪐",
     featured: true,
-    upvotes: 1280,
     status: "online",
     pricing: "Freemium",
   },
@@ -37,11 +30,11 @@ const sampleTools: Array<{
     title: "PixelCrafter",
     description: "Image generation with layered edits, masks, and live prompts.",
     category: "Image Gen",
+    type: "Web App",
     tags: ["vision", "editing"],
     url: "https://example.com/pixelcrafter",
     logo: "🎨",
     featured: false,
-    upvotes: 987,
     status: "online",
     pricing: "Paid",
   },
@@ -49,11 +42,11 @@ const sampleTools: Array<{
     title: "CodeFuse",
     description: "Pair-programming AI with repo-aware context and inline tests.",
     category: "Coding",
+    type: "Desktop App",
     tags: ["developer", "tests"],
     url: "https://example.com/codefuse",
     logo: "⚡",
     featured: false,
-    upvotes: 1542,
     status: "online",
     pricing: "Free",
   },
@@ -61,11 +54,11 @@ const sampleTools: Array<{
     title: "SynthVoice",
     description: "Ultra-realistic multilingual voiceover with sentiment control.",
     category: "Audio",
+    type: "Mobile App",
     tags: ["voice", "multilingual"],
     url: "https://example.com/synthvoice",
     logo: "🔊",
     featured: false,
-    upvotes: 803,
     status: "online",
     pricing: "Paid",
   },
@@ -73,11 +66,11 @@ const sampleTools: Array<{
     title: "InsightOps",
     description: "LLM dashboards for metrics, anomalies, and alert summaries.",
     category: "Analytics",
+    type: "Web App",
     tags: ["ops", "monitoring"],
     url: "https://example.com/insightops",
     logo: "📊",
     featured: false,
-    upvotes: 1120,
     status: "online",
     pricing: "Freemium",
   },
@@ -85,11 +78,11 @@ const sampleTools: Array<{
     title: "PromptBoard",
     description: "Team prompt versioning, evals, and rollout guards in one UI.",
     category: "Productivity",
+    type: "Web App",
     tags: ["prompts", "governance"],
     url: "https://example.com/promptboard",
     logo: "🧭",
     featured: false,
-    upvotes: 640,
     status: "online",
     pricing: "Free",
   },
@@ -101,13 +94,19 @@ const toolValidator = v.object({
   title: v.string(),
   description: v.string(),
   category: v.string(),
+  type: v.optional(v.string()),
   tags: v.array(v.string()),
   url: v.string(),
   logo: v.string(),
   featured: v.boolean(),
-  upvotes: v.number(),
   status: v.optional(v.union(v.literal("online"), v.literal("offline"), v.literal("hold"))),
   pricing: v.optional(v.string()),
+  canonicalUrl: v.optional(v.string()),
+  domain: v.optional(v.string()),
+  ownerUserId: v.optional(v.string()),
+  ownerType: v.optional(v.union(v.literal("human"), v.literal("integration"), v.literal("system"))),
+  ownerId: v.optional(v.string()),
+  publishedFromSubmissionId: v.optional(v.id("submissions")),
 });
 
 const categoryValidator = v.object({
@@ -119,10 +118,26 @@ const categoryValidator = v.object({
   y: v.optional(v.number()),
 });
 
+export const migrateRemoveUpvotes = mutation({
+  args: {},
+  returns: v.null(),
+  handler: async (ctx) => {
+    assertAdmin(await ctx.auth.getUserIdentity());
+    const allTools = await ctx.db.query("tools").collect();
+    for (const tool of allTools) {
+      if ("upvotes" in tool) {
+        await ctx.db.patch(tool._id, { upvotes: undefined } as unknown as Record<string, never>);
+      }
+    }
+    return null;
+  },
+});
+
 export const seedTools = mutation({
   args: {},
   returns: v.null(),
   handler: async (ctx) => {
+    assertAdmin(await ctx.auth.getUserIdentity());
     const existing = await ctx.db.query("tools").take(1);
     if (existing.length > 0) {
       return null;
@@ -146,6 +161,9 @@ export const listTools = query({
     featured: v.union(toolValidator, v.null()),
   }),
   handler: async (ctx, args) => {
+    if (args.includeAll) {
+      assertAdmin(await ctx.auth.getUserIdentity());
+    }
     const search = args.search?.toLowerCase().trim();
     const allTools = await ctx.db.query("tools").order("desc").collect();
 
@@ -180,7 +198,13 @@ export const getTool = query({
   args: { toolId: v.id("tools") },
   returns: v.union(toolValidator, v.null()),
   handler: async (ctx, args) => {
-    return await ctx.db.get(args.toolId);
+    const tool = await ctx.db.get(args.toolId);
+    if (!tool) return null;
+    if (tool.status !== "online" && tool.status !== undefined) {
+      const identity = await ctx.auth.getUserIdentity();
+      if (identity?.email?.toLowerCase() !== ADMIN_EMAIL) return null;
+    }
+    return tool;
   },
 });
 
@@ -189,23 +213,21 @@ export const createTool = mutation({
     title: v.string(),
     description: v.string(),
     category: v.string(),
+    type: v.optional(v.string()),
     tags: v.array(v.string()),
     url: v.string(),
     logo: v.string(),
     featured: v.boolean(),
-    upvotes: v.optional(v.number()),
     status: v.optional(v.union(v.literal("online"), v.literal("offline"), v.literal("hold"))),
     pricing: v.optional(v.string()),
   },
   returns: v.object({ toolId: v.id("tools") }),
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    assertAdmin(identity?.email);
+    assertAdmin(await ctx.auth.getUserIdentity());
 
     const toolId = await ctx.db.insert("tools", {
       ...args,
       tags: [...args.tags],
-      upvotes: args.upvotes ?? 0,
       status: args.status ?? "hold",
       pricing: args.pricing,
     });
@@ -220,18 +242,17 @@ export const updateTool = mutation({
     title: v.optional(v.string()),
     description: v.optional(v.string()),
     category: v.optional(v.string()),
+    type: v.optional(v.string()),
     tags: v.optional(v.array(v.string())),
     url: v.optional(v.string()),
     logo: v.optional(v.string()),
     featured: v.optional(v.boolean()),
-    upvotes: v.optional(v.number()),
     status: v.optional(v.union(v.literal("online"), v.literal("offline"), v.literal("hold"))),
     pricing: v.optional(v.string()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    assertAdmin(identity?.email);
+    assertAdmin(await ctx.auth.getUserIdentity());
 
     const tool = await ctx.db.get(args.toolId);
     if (!tool) {
@@ -242,11 +263,11 @@ export const updateTool = mutation({
       ...(args.title !== undefined ? { title: args.title } : {}),
       ...(args.description !== undefined ? { description: args.description } : {}),
       ...(args.category !== undefined ? { category: args.category } : {}),
+      ...(args.type !== undefined ? { type: args.type } : {}),
       ...(args.tags !== undefined ? { tags: [...args.tags] } : {}),
       ...(args.url !== undefined ? { url: args.url } : {}),
       ...(args.logo !== undefined ? { logo: args.logo } : {}),
       ...(args.featured !== undefined ? { featured: args.featured } : {}),
-      ...(args.upvotes !== undefined ? { upvotes: args.upvotes } : {}),
       ...(args.status !== undefined ? { status: args.status } : {}),
       ...(args.pricing !== undefined ? { pricing: args.pricing } : {}),
     };
@@ -262,29 +283,10 @@ export const deleteTool = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    assertAdmin(identity?.email);
+    assertAdmin(await ctx.auth.getUserIdentity());
 
     await ctx.db.delete(args.toolId);
     return null;
-  },
-});
-
-export const upvoteTool = mutation({
-  args: {
-    toolId: v.id("tools"),
-  },
-  returns: v.object({
-    upvotes: v.number(),
-  }),
-  handler: async (ctx, args) => {
-    const tool = await ctx.db.get(args.toolId);
-    if (!tool) {
-      throw new Error("Tool not found");
-    }
-    const next = tool.upvotes + 1;
-    await ctx.db.patch(args.toolId, { upvotes: next });
-    return { upvotes: next };
   },
 });
 
@@ -305,8 +307,7 @@ export const createCategory = mutation({
   },
   returns: v.object({ categoryId: v.id("categories") }),
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    assertAdmin(identity?.email);
+    assertAdmin(await ctx.auth.getUserIdentity());
 
     const categoryId = await ctx.db.insert("categories", {
       name: args.name.trim(),
@@ -329,8 +330,7 @@ export const updateCategory = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    assertAdmin(identity?.email);
+    assertAdmin(await ctx.auth.getUserIdentity());
 
     const existing = await ctx.db.get(args.categoryId);
     if (!existing) {
@@ -354,8 +354,7 @@ export const deleteCategory = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    assertAdmin(identity?.email);
+    assertAdmin(await ctx.auth.getUserIdentity());
 
     const existing = await ctx.db.get(args.categoryId);
     if (!existing) {

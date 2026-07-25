@@ -1,0 +1,16 @@
+app: directory-tool
+type: dockerfile
+port: 3000
+
+health:
+  path: /
+
+env:
+  - NEXT_PUBLIC_CONVEX_URL
+  - NEXT_PUBLIC_STACK_PROJECT_ID
+  - NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY
+  - STACK_SECRET_SERVER_KEY
+  - CONVEX_DEPLOY_KEY
+
+risks:
+  - convex

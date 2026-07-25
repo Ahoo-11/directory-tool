@@ -5,12 +5,13 @@ import Link from "next/link";
 import { Sidebar } from "./Sidebar";
 import { UserButton, useUser } from "@stackframe/stack";
 import { stackClientApp } from "@/stack/client";
-import { Bell, Search, Sun, Moon, TrendingUp, Plus } from "lucide-react";
+import { Bell, Search, Sun, Moon, TrendingUp, Plus, Settings, FolderTree, Inbox } from "lucide-react";
 import { useTheme } from "next-themes";
 
 export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const user = useUser();
   const isLoggedIn = !!user;
+  const isAdmin = user?.primaryEmail?.toLowerCase() === "ahoo11official@gmail.com";
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = React.useState(false);
 
@@ -19,17 +20,17 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <div className={isLoggedIn ? "min-h-screen bg-[#0A0A0C]" : "public-shell min-h-screen bg-[#f7f7f5] text-zinc-950 dark:bg-[#0f1014] dark:text-zinc-50"}>
-      {/* Sidebar - only for logged in users */}
-      {isLoggedIn && <Sidebar />}
+    <div className={isLoggedIn ? "min-h-screen bg-[#f7f7f5] text-zinc-950 dark:bg-[#0A0A0C] dark:text-white" : "public-shell min-h-screen bg-[#f7f7f5] text-zinc-950 dark:bg-[#0f1014] dark:text-zinc-50"}>
+      {/* Sidebar - only for logged in non-admin users */}
+      {isLoggedIn && !isAdmin && <Sidebar />}
 
       {/* Main Content Area */}
-      <div className={isLoggedIn ? "pl-64" : ""}>
+      <div className={isLoggedIn && !isAdmin ? "pl-64" : ""}>
         {/* Top Bar */}
         <header
           className={
             isLoggedIn
-              ? "sticky top-0 z-30 flex h-16 items-center justify-between border-b border-white/5 bg-[#0A0A0C]/80 px-6 backdrop-blur-xl"
+              ? "sticky top-0 z-30 flex h-16 items-center justify-between border-b border-zinc-200/80 bg-white/80 px-6 backdrop-blur-xl dark:border-white/5 dark:bg-[#0A0A0C]/80"
               : "public-header sticky top-0 z-30 flex h-16 items-center justify-between border-b border-zinc-200 bg-[#f7f7f5]/90 px-5 backdrop-blur-xl dark:border-zinc-800 dark:bg-[#0f1014]/90"
           }
         >
@@ -51,11 +52,11 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
             )}
             {isLoggedIn && (
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400 dark:text-slate-500" />
                 <input
                   type="text"
                   placeholder="Search tools..."
-                  className="h-10 w-80 rounded-xl border border-white/10 bg-white/5 pl-10 pr-4 text-sm text-white placeholder:text-slate-500 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  className="h-10 w-80 rounded-xl border border-zinc-200 bg-zinc-100 pl-10 pr-4 text-sm text-zinc-950 placeholder:text-zinc-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-white/10 dark:bg-white/5 dark:text-white dark:placeholder:text-slate-500"
                 />
               </div>
             )}
@@ -63,18 +64,45 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
 
           <div className="flex items-center gap-4">
             {isLoggedIn && (
-              <button className="relative rounded-xl p-2 text-slate-400 transition-colors hover:bg-white/5 hover:text-white">
+              <button className="relative rounded-xl p-2 text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-950 dark:text-slate-400 dark:hover:bg-white/5 dark:hover:text-white">
                 <Bell className="h-5 w-5" />
                 <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-indigo-500" />
               </button>
             )}
 
+            {/* Admin: Settings & Categories in header */}
+            {isLoggedIn && isAdmin && (
+              <>
+                <Link
+                  href="/submissions"
+                  className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-950 dark:text-slate-400 dark:hover:bg-white/5 dark:hover:text-white"
+                >
+                  <Inbox className="h-5 w-5" />
+                  <span className="hidden sm:inline">Review queue</span>
+                </Link>
+                <Link
+                  href="/categories"
+                  className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-950 dark:text-slate-400 dark:hover:bg-white/5 dark:hover:text-white"
+                >
+                  <FolderTree className="h-5 w-5" />
+                  <span className="hidden sm:inline">Categories</span>
+                </Link>
+                <Link
+                  href="/settings"
+                  className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-950 dark:text-slate-400 dark:hover:bg-white/5 dark:hover:text-white"
+                >
+                  <Settings className="h-5 w-5" />
+                  <span className="hidden sm:inline">Settings</span>
+                </Link>
+              </>
+            )}
+
             {/* Submit Tool Button */}
-            {isLoggedIn ? (
-              <button className="hidden sm:flex items-center gap-2 rounded-xl bg-white/5 px-4 py-2 text-sm font-medium text-white hover:bg-white/10 transition-colors border border-white/5">
+            {isLoggedIn && !isAdmin ? (
+              <Link href="/submissions" className="hidden sm:flex items-center gap-2 rounded-xl bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-200 transition-colors border border-zinc-200/80 dark:bg-white/5 dark:hover:bg-white/10 dark:border-white/5 dark:text-white">
                 <Plus className="h-4 w-4" />
-                Submit Tool
-              </button>
+                My Submissions
+              </Link>
             ) : (
               null
             )}
@@ -85,7 +113,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
                 onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
                 className={
                   isLoggedIn
-                    ? "rounded-xl p-2 text-slate-400 transition-colors hover:bg-white/5 hover:text-white"
+                    ? "rounded-xl p-2 text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-950 dark:text-slate-400 dark:hover:bg-white/5 dark:hover:text-white"
                     : "rounded-md p-2 text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-950 dark:text-zinc-400 dark:hover:bg-zinc-900 dark:hover:text-zinc-50"
                 }
               >
@@ -103,8 +131,8 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
             ) : (
               <div className="flex items-center gap-3">
                 <div className="text-right hidden sm:block">
-                  <p className="text-sm font-medium text-white">{user.displayName || "User"}</p>
-                  <p className="text-xs text-slate-500">{user.primaryEmail}</p>
+                  <p className="text-sm font-medium text-zinc-800 dark:text-white">{user.displayName || "User"}</p>
+                  <p className="text-xs text-zinc-500 dark:text-slate-500">{user.primaryEmail}</p>
                 </div>
                 <UserButton showUserInfo={false} />
               </div>

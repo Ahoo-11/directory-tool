@@ -32,6 +32,46 @@ To learn more about developing your project with Convex, check out:
 - The rest of [Convex docs](https://docs.convex.dev/) to learn about all Convex features.
 - [Stack](https://stack.convex.dev/) for in-depth articles on advanced topics.
 
+## Automated listing intake
+
+Signed-in users can submit a website URL from the home page. The backend extracts
+the listing details, checks for duplicates, records who submitted it, and places
+it in the approval queue at `/submissions`. Only an administrator can publish,
+reject, or request changes.
+
+Firecrawl enrichment is optional. Configure it in the Convex runtime:
+
+```powershell
+npx convex env set FIRECRAWL_API_KEY fc-your-key
+```
+
+Without Firecrawl, the importer uses the website's public HTML metadata.
+
+## MCP submission API
+
+The stateless MCP endpoint is available at `/api/mcp` and provides:
+
+- `submit_listing`
+- `preview_listing`
+- `suggest_listing_update`
+- `claim_listing`
+- `get_submission_status`
+
+Configure one client:
+
+```powershell
+npx convex env set DIRECTORY_MCP_API_KEY replace-with-a-long-random-secret
+```
+
+Or configure named clients. The matching JSON key is stored as the immutable
+integration identity on every submission:
+
+```powershell
+npx convex env set DIRECTORY_MCP_API_KEYS '{"agenthub":"secret-one","partner-a":"secret-two"}'
+```
+
+Clients authenticate with `Authorization: Bearer <secret>`.
+
 ## Join the community
 
 Join thousands of developers building full-stack apps with Convex:

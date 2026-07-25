@@ -1,10 +1,9 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
-  ArrowUp,
   Bookmark,
   Filter,
   MoveUpRight,
@@ -24,6 +23,8 @@ import type { Id } from "../convex/_generated/dataModel";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { useSavedTools } from "@/lib/useSavedTools";
 import { stackClientApp } from "@/stack/client";
+import { SubmitToolModal } from "@/components/SubmitToolModal";
+import { ToolLogo } from "@/components/ToolLogo";
 
 type Tool = {
   _id: Id<"tools">;
@@ -31,14 +32,29 @@ type Tool = {
   title: string;
   description: string;
   category: string;
+  type?: string;
   tags: string[];
   url: string;
   logo: string;
   featured: boolean;
-  upvotes: number;
   status?: "online" | "offline" | "hold";
   pricing?: string;
 };
+
+const toolTypes = [
+  "Web App",
+  "Mobile App",
+  "Website",
+  "Desktop App",
+  "Browser Extension",
+  "API",
+  "CLI Tool",
+  "Library/SDK",
+  "Plugin",
+  "Platform/SaaS",
+  "Game",
+  "Other",
+];
 
 const baseCategories = ["All", "Copywriting", "Coding", "Image Gen", "Audio", "Analytics", "Productivity"];
 
@@ -50,13 +66,19 @@ export default function Home() {
   const [tag, setTag] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [showAddModal, setShowAddModal] = useState(false);
-  const [quickForm, setQuickForm] = useState({ title: "", description: "" });
+  const [showSubmitModal, setShowSubmitModal] = useState(false);
+  const [quickForm, setQuickForm] = useState({
+    title: "",
+    description: "",
+    category: "",
+    type: "Web App",
+  });
   const { toggleSaved, isSaved } = useSavedTools();
 
-  const seedTools = useMutation(api.myFunctions.seedTools);
-  const upvoteTool = useMutation(api.myFunctions.upvoteTool);
   const createTool = useMutation(api.myFunctions.createTool);
+  const createCategory = useMutation(api.myFunctions.createCategory);
   const deleteTool = useMutation(api.myFunctions.deleteTool);
+  const categoriesData = useQuery(api.myFunctions.listCategories, {});
 
   const data = useQuery(api.myFunctions.listTools, {
     category,
@@ -64,10 +86,6 @@ export default function Home() {
     tag: tag || undefined,
     includeAll: isAdmin ? true : undefined,
   });
-
-  useEffect(() => {
-    void seedTools({});
-  }, [seedTools]);
 
   const tools = data?.tools ?? [];
 
@@ -84,29 +102,23 @@ export default function Home() {
     return Array.from(list).sort();
   }, [data?.tools]);
 
-  const handleUpvote = async (id: Id<"tools">) => {
-    try {
-      await upvoteTool({ toolId: id });
-    } catch (error) {
-      console.error(error);
-    }
-  };
-
   const handleQuickAdd = async () => {
     if (!isAdmin || !quickForm.title.trim()) return;
+
+    const category = quickForm.category.trim() || "General";
 
     try {
       const result = await createTool({
         title: quickForm.title.trim(),
         description: quickForm.description.trim(),
-        category: "General",
+        category,
+        type: quickForm.type,
         tags: [],
         url: "",
         logo: "*",
         featured: false,
-        upvotes: 0,
       });
-      setQuickForm({ title: "", description: "" });
+      setQuickForm({ title: "", description: "", category: "", type: "Web App" });
       setShowAddModal(false);
 
       if (result?.toolId) {
@@ -141,24 +153,22 @@ export default function Home() {
             selectedTag={tag}
             onSelectTag={(value) => setTag((previous) => (previous === value ? null : value))}
             resultCount={tools.length}
+            isAdmin={isAdmin}
             onAddTool={() => {
               if (isAdmin) {
                 setShowAddModal(true);
                 return;
               }
-              window.location.href = stackClientApp.urls.signIn;
+              if (!user) {
+                window.location.href = stackClientApp.urls.signIn;
+                return;
+              }
+              setShowSubmitModal(true);
             }}
           />
 
           {isAdmin && (
             <div className="flex items-center gap-3">
-              <button
-                onClick={() => setShowAddModal(true)}
-                className="inline-flex items-center gap-2 rounded-md bg-zinc-950 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-zinc-800"
-              >
-                <Plus className="h-4 w-4" />
-                Add New Tool
-              </button>
               <span className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-amber-600">
                 <Zap className="h-3.5 w-3.5 fill-current" />
                 Admin Mode
@@ -173,6 +183,15 @@ export default function Home() {
                 setQuickForm={setQuickForm}
                 onClose={() => setShowAddModal(false)}
                 onSave={handleQuickAdd}
+                existingCategories={(categoriesData ?? []).map((c) => c.name)}
+                toolTypes={toolTypes}
+                onCreateCategory={async (name) => {
+                  try {
+                    await createCategory({ name });
+                  } catch (error) {
+                    console.error(error);
+                  }
+                }}
               />
             )}
           </AnimatePresence>
@@ -195,7 +214,6 @@ export default function Home() {
                     tool={tool}
                     saved={isSaved(tool._id)}
                     onSave={() => toggleSaved(tool._id)}
-                    onUpvote={() => handleUpvote(tool._id)}
                     isAdmin={isAdmin}
                     onDelete={() => handleDelete(tool._id)}
                   />
@@ -205,6 +223,7 @@ export default function Home() {
           </section>
         </div>
       </div>
+      <SubmitToolModal open={showSubmitModal} onClose={() => setShowSubmitModal(false)} />
     </DashboardLayout>
   );
 }
@@ -220,6 +239,7 @@ function DirectoryHeader({
   onSelectTag,
   resultCount,
   onAddTool,
+  isAdmin,
 }: {
   search: string;
   setSearch: (value: string) => void;
@@ -231,6 +251,7 @@ function DirectoryHeader({
   onSelectTag: (value: string) => void;
   resultCount: number;
   onAddTool: () => void;
+  isAdmin: boolean;
 }) {
   const [showFilters, setShowFilters] = useState(false);
 
@@ -246,7 +267,7 @@ function DirectoryHeader({
           className="inline-flex w-fit items-center gap-2 rounded-md bg-[#4f63d8] px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#4054c9]"
         >
           <Plus className="h-4 w-4" />
-          Add tool
+          {isAdmin ? "Add tools" : "Submit tool"}
         </button>
       </div>
       <div className="public-divider mt-6 flex flex-col gap-4 border-b border-zinc-200 py-5 lg:flex-row lg:items-center lg:justify-between dark:border-zinc-800">
@@ -362,14 +383,12 @@ function ToolCard({
   tool,
   saved,
   onSave,
-  onUpvote,
   isAdmin,
   onDelete,
 }: {
   tool: Tool;
   saved: boolean;
   onSave: () => void;
-  onUpvote: () => void;
   isAdmin?: boolean;
   onDelete?: () => void;
 }) {
@@ -382,7 +401,7 @@ function ToolCard({
         <div className="relative flex items-start justify-between">
           <Link href={`/tool/${tool._id}`} className="block">
             <div className="public-tool-icon flex h-9 w-9 items-center justify-center rounded-md border border-zinc-200 bg-zinc-50 text-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] dark:border-zinc-700 dark:bg-zinc-900">
-              {tool.logo}
+              <ToolLogo value={tool.logo} title={tool.title} className="h-full w-full object-contain p-1.5" />
             </div>
           </Link>
           <div className="flex items-center gap-1.5">
@@ -424,6 +443,12 @@ function ToolCard({
 
         <div className="public-muted mt-4 flex items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400">
           <span>{tool.category}</span>
+          {tool.type && (
+            <>
+              <span className="h-1 w-1 rounded-full bg-zinc-300" />
+              <span>{tool.type}</span>
+            </>
+          )}
           {tool.pricing && (
             <>
               <span className="h-1 w-1 rounded-full bg-zinc-300" />
@@ -433,17 +458,7 @@ function ToolCard({
         </div>
       </div>
 
-      <div className="public-card-divider mt-4 flex items-center justify-between gap-3 border-t border-zinc-100 pt-3 dark:border-zinc-800">
-        <button
-          onClick={onUpvote}
-          className="group/upvote flex items-center gap-1.5 text-xs font-medium text-zinc-500 transition-colors hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-zinc-50"
-        >
-          <div className="flex items-center justify-center rounded-md bg-zinc-100 p-1 transition-colors group-hover/upvote:bg-indigo-600 group-hover/upvote:text-white">
-            <ArrowUp className="h-3 w-3" />
-          </div>
-          <span>{tool.upvotes}</span>
-        </button>
-
+      <div className="public-card-divider mt-4 flex items-center justify-end gap-3 border-t border-zinc-100 pt-3 dark:border-zinc-800">
         <div className="flex items-center gap-2">
           {isAdmin && (
             <div className="flex gap-1">
@@ -475,12 +490,39 @@ function QuickAddModal({
   setQuickForm,
   onClose,
   onSave,
+  existingCategories,
+  toolTypes,
+  onCreateCategory,
 }: {
-  quickForm: { title: string; description: string };
-  setQuickForm: React.Dispatch<React.SetStateAction<{ title: string; description: string }>>;
+  quickForm: { title: string; description: string; category: string; type: string };
+  setQuickForm: React.Dispatch<React.SetStateAction<{ title: string; description: string; category: string; type: string }>>;
   onClose: () => void;
   onSave: () => void;
+  existingCategories: string[];
+  toolTypes: string[];
+  onCreateCategory: (name: string) => Promise<void>;
 }) {
+  const [showNewCategory, setShowNewCategory] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState("");
+
+  const handleCategoryChange = (value: string) => {
+    if (value === "__add_new__") {
+      setShowNewCategory(true);
+      setQuickForm((f) => ({ ...f, category: "" }));
+    } else {
+      setShowNewCategory(false);
+      setQuickForm((f) => ({ ...f, category: value }));
+    }
+  };
+
+  const handleAddNewCategory = async () => {
+    const name = newCategoryName.trim();
+    if (!name) return;
+    await onCreateCategory(name);
+    setQuickForm((f) => ({ ...f, category: name }));
+    setShowNewCategory(false);
+    setNewCategoryName("");
+  };
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -525,9 +567,72 @@ function QuickAddModal({
               className="w-full resize-none rounded-md border border-zinc-200 bg-white px-3 py-2.5 text-sm text-zinc-950 placeholder:text-zinc-400 focus:border-[#4f63d8] focus:outline-none focus:ring-2 focus:ring-[#4f63d8]/15"
             />
           </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-zinc-600">Category</label>
+              {showNewCategory ? (
+                <div className="flex gap-2">
+                  <input
+                    value={newCategoryName}
+                    onChange={(e) => setNewCategoryName(e.target.value)}
+                    placeholder="New category name..."
+                    className="w-full rounded-md border border-zinc-200 bg-white px-3 py-2.5 text-sm text-zinc-950 placeholder:text-zinc-400 focus:border-[#4f63d8] focus:outline-none focus:ring-2 focus:ring-[#4f63d8]/15"
+                    autoFocus
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddNewCategory}
+                    disabled={!newCategoryName.trim()}
+                    className="inline-flex items-center gap-1 rounded-md bg-[#4f63d8] px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
+                  >
+                    <Plus className="h-3 w-3" />
+                    Add
+                  </button>
+                </div>
+              ) : (
+                <select
+                  value={quickForm.category}
+                  onChange={(e) => handleCategoryChange(e.target.value)}
+                  className="w-full rounded-md border border-zinc-200 bg-white px-3 py-2.5 text-sm text-zinc-950 focus:border-[#4f63d8] focus:outline-none focus:ring-2 focus:ring-[#4f63d8]/15"
+                >
+                  <option value="">Select a category...</option>
+                  {existingCategories.map((cat) => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                  <option value="__add_new__">+ Add new category...</option>
+                </select>
+              )}
+              {showNewCategory && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowNewCategory(false);
+                    setNewCategoryName("");
+                  }}
+                  className="mt-1.5 text-xs text-zinc-500 hover:text-zinc-700"
+                >
+                  Cancel new category
+                </button>
+              )}
+            </div>
+
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-zinc-600">Type</label>
+              <select
+                value={quickForm.type}
+                onChange={(event) => setQuickForm((form) => ({ ...form, type: event.target.value }))}
+                className="w-full rounded-md border border-zinc-200 bg-white px-3 py-2.5 text-sm text-zinc-950 focus:border-[#4f63d8] focus:outline-none focus:ring-2 focus:ring-[#4f63d8]/15"
+              >
+                {toolTypes.map((t) => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
+            </div>
+          </div>
         </div>
 
-        <p className="mt-4 text-xs text-zinc-500">You can add category, tags, URL, and logo details after saving.</p>
+        <p className="mt-4 text-xs text-zinc-500">You can add tags, URL, and logo details after saving.</p>
 
         <div className="mt-6 flex items-center justify-end gap-3">
           <button onClick={onClose} className="rounded-md px-4 py-2 text-sm font-medium text-zinc-600 transition-colors hover:bg-zinc-100">
