@@ -9,7 +9,6 @@ import {
   MoveUpRight,
   Pencil,
   Plus,
-  Search,
   Star,
   Trash2,
   X,
@@ -25,6 +24,7 @@ import { useSavedTools } from "@/lib/useSavedTools";
 import { stackClientApp } from "@/stack/client";
 import { SubmitToolModal } from "@/components/SubmitToolModal";
 import { ToolLogo } from "@/components/ToolLogo";
+import { useAdminViewMode } from "@/components/AdminViewModeProvider";
 
 type Tool = {
   _id: Id<"tools">;
@@ -60,7 +60,7 @@ const baseCategories = ["All", "Copywriting", "Coding", "Image Gen", "Audio", "A
 
 export default function Home() {
   const user = useUser();
-  const isAdmin = user?.primaryEmail?.toLowerCase() === "ahoo11official@gmail.com";
+  const { isAdmin } = useAdminViewMode();
 
   const [category, setCategory] = useState("All");
   const [tag, setTag] = useState<string | null>(null);
@@ -140,12 +140,10 @@ export default function Home() {
   };
 
   return (
-    <DashboardLayout>
+    <DashboardLayout searchValue={search} onSearchChange={setSearch}>
       <div className="public-home min-h-[calc(100vh-4rem)] bg-[#f7f7f5] px-5 py-8 text-zinc-950 selection:bg-indigo-200/70 dark:bg-[#0f1014] dark:text-zinc-50 dark:selection:bg-indigo-500/30">
         <div className="mx-auto flex max-w-[1220px] flex-col gap-8">
           <DirectoryHeader
-            search={search}
-            setSearch={setSearch}
             categories={categories}
             selectedCategory={category}
             onSelectCategory={setCategory}
@@ -229,8 +227,6 @@ export default function Home() {
 }
 
 function DirectoryHeader({
-  search,
-  setSearch,
   categories,
   selectedCategory,
   onSelectCategory,
@@ -241,8 +237,6 @@ function DirectoryHeader({
   onAddTool,
   isAdmin,
 }: {
-  search: string;
-  setSearch: (value: string) => void;
   categories: string[];
   selectedCategory: string;
   onSelectCategory: (value: string) => void;
@@ -262,33 +256,17 @@ function DirectoryHeader({
           <h1 className="public-title text-2xl font-semibold tracking-tight text-zinc-950 dark:text-zinc-50">AI Tools</h1>
           <p className="public-muted mt-1 text-sm text-zinc-500 dark:text-zinc-400">Find useful products, partners, and workflows for modern teams.</p>
         </div>
-        <button
-          onClick={onAddTool}
-          className="inline-flex w-fit items-center gap-2 rounded-md bg-[#4f63d8] px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#4054c9]"
-        >
-          <Plus className="h-4 w-4" />
-          {isAdmin ? "Add tools" : "Submit tool"}
-        </button>
+        {isAdmin && (
+          <button
+            onClick={onAddTool}
+            className="inline-flex w-fit items-center gap-2 rounded-md bg-[#4f63d8] px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#4054c9]"
+          >
+            <Plus className="h-4 w-4" />
+            Add tools
+          </button>
+        )}
       </div>
-      <div className="public-divider mt-6 flex flex-col gap-4 border-b border-zinc-200 py-5 lg:flex-row lg:items-center lg:justify-between dark:border-zinc-800">
-        <div className="relative w-full lg:max-w-sm">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
-          <input
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search tools..."
-            className="public-control h-10 w-full rounded-md border border-zinc-200 bg-white pl-9 pr-9 text-sm text-zinc-950 shadow-sm placeholder:text-zinc-400 focus:border-[#4f63d8] focus:outline-none focus:ring-2 focus:ring-[#4f63d8]/15 dark:border-zinc-800 dark:bg-[#181a20] dark:text-zinc-50 dark:placeholder:text-zinc-500"
-          />
-          {search && (
-            <button
-              onClick={() => setSearch("")}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          )}
-        </div>
-
+      <div className="public-divider mt-6 flex justify-end border-b border-zinc-200 py-5 dark:border-zinc-800">
         <div className="relative z-20 flex items-center gap-2">
           <label htmlFor="category-filter" className="sr-only">
             Category

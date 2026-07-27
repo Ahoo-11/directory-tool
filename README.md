@@ -51,6 +51,9 @@ Without Firecrawl, the importer uses the website's public HTML metadata.
 
 The stateless MCP endpoint is available at `/api/mcp` and provides:
 
+- `list_tools` — list approved directory tools
+- `add_tool` — add supplied tool details to the pending approval queue
+- `update_tool` — stage partial changes without touching the live tool until approval
 - `submit_listing`
 - `preview_listing`
 - `suggest_listing_update`

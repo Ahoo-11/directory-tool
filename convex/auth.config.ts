@@ -6,8 +6,10 @@ if (!projectId) {
   throw new Error("NEXT_PUBLIC_STACK_PROJECT_ID is missing from env");
 }
 
-export default {
+const authConfig = {
   providers: getConvexProvidersConfig({
     projectId,
   }),
 };
+
+export default authConfig;

@@ -1,31 +1,36 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
-import { useUser } from "@stackframe/stack";
 import { api } from "../../convex/_generated/api";
+import type { Id } from "../../convex/_generated/dataModel";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { FolderTree, Plus, Trash2, X, Link2, MousePointer2, ZoomIn, ZoomOut } from "lucide-react";
 import cn from "classnames";
+import { useTheme } from "next-themes";
+import { useAdminViewMode } from "@/components/AdminViewModeProvider";
 
 type Category = {
-  _id: string;
+  _id: Id<"categories">;
   _creationTime: number;
   name: string;
-  parentId?: string;
+  parentId?: Id<"categories">;
   x?: number;
   y?: number;
 };
 
-const ADMIN_EMAIL = "ahoo11official@gmail.com";
 const NODE_WIDTH = 180;
 const NODE_HEIGHT = 60;
 const DEFAULT_X = 100;
 const DEFAULT_Y = 100;
 
+function errorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
+}
+
 export default function CategoriesPage() {
-  const user = useUser();
-  const isAdmin = user?.primaryEmail?.toLowerCase() === ADMIN_EMAIL;
+  const { isAdmin } = useAdminViewMode();
+  const { theme } = useTheme();
 
   const categories = useQuery(api.myFunctions.listCategories, {});
   const createCategory = useMutation(api.myFunctions.createCategory);
@@ -38,14 +43,14 @@ export default function CategoriesPage() {
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
 
-  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [draggingId, setDraggingId] = useState<Id<"categories"> | null>(null);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
 
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<Id<"categories"> | null>(null);
+  const [editingId, setEditingId] = useState<Id<"categories"> | null>(null);
   const [editingName, setEditingName] = useState("");
 
-  const [connectingFrom, setConnectingFrom] = useState<string | null>(null);
+  const [connectingFrom, setConnectingFrom] = useState<Id<"categories"> | null>(null);
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [newName, setNewName] = useState("");
@@ -55,8 +60,8 @@ export default function CategoriesPage() {
 
   const nodes = useMemo(() => {
     const list = (categories ?? []) as Category[];
-    let nextX = DEFAULT_X;
-    let nextY = DEFAULT_Y;
+    const nextX = DEFAULT_X;
+    const nextY = DEFAULT_Y;
     return list.map((c, i) => {
       const x = c.x ?? nextX + i * 220;
       const y = c.y ?? nextY + Math.floor(i / 4) * 100;
@@ -65,13 +70,13 @@ export default function CategoriesPage() {
   }, [categories]);
 
   const nodesById = useMemo(() => {
-    const map = new Map<string, Category & { x: number; y: number }>();
+    const map = new Map<Id<"categories">, Category & { x: number; y: number }>();
     for (const n of nodes) map.set(n._id, n);
     return map;
   }, [nodes]);
 
   const connections = useMemo(() => {
-    const lines: { from: string; to: string }[] = [];
+    const lines: { from: Id<"categories">; to: Id<"categories"> }[] = [];
     for (const n of nodes) {
       if (n.parentId) {
         lines.push({ from: n.parentId, to: n._id });
@@ -100,7 +105,7 @@ export default function CategoriesPage() {
       if (!rect) return;
       const x = (e.clientX - rect.left - pan.x) / zoom - dragOffset.x;
       const y = (e.clientY - rect.top - pan.y) / zoom - dragOffset.y;
-      updateCategory({ categoryId: draggingId as any, x, y });
+      updateCategory({ categoryId: draggingId, x, y });
     }
   };
 
@@ -127,31 +132,31 @@ export default function CategoriesPage() {
     setDraggingId(node._id);
   };
 
-  const handleConnect = async (fromId: string, toId: string) => {
+  const handleConnect = async (fromId: Id<"categories">, toId: Id<"categories">) => {
     setError(null);
     try {
-      await updateCategory({ categoryId: toId as any, parentId: fromId as any });
-    } catch (e: any) {
-      setError(e?.message ?? "Failed to connect");
+      await updateCategory({ categoryId: toId, parentId: fromId });
+    } catch (error: unknown) {
+      setError(errorMessage(error, "Failed to connect"));
     }
   };
 
-  const handleDisconnect = async (nodeId: string) => {
+  const handleDisconnect = async (nodeId: Id<"categories">) => {
     setError(null);
     try {
-      await updateCategory({ categoryId: nodeId as any, parentId: null });
-    } catch (e: any) {
-      setError(e?.message ?? "Failed to disconnect");
+      await updateCategory({ categoryId: nodeId, parentId: null });
+    } catch (error: unknown) {
+      setError(errorMessage(error, "Failed to disconnect"));
     }
   };
 
-  const handleDelete = async (nodeId: string) => {
+  const handleDelete = async (nodeId: Id<"categories">) => {
     setError(null);
     try {
-      await deleteCategory({ categoryId: nodeId as any });
+      await deleteCategory({ categoryId: nodeId });
       setSelectedId(null);
-    } catch (e: any) {
-      setError(e?.message ?? "Failed to delete");
+    } catch (error: unknown) {
+      setError(errorMessage(error, "Failed to delete"));
     }
   };
 
@@ -164,11 +169,11 @@ export default function CategoriesPage() {
     if (!editingId || !editingName.trim()) return;
     setError(null);
     try {
-      await updateCategory({ categoryId: editingId as any, name: editingName.trim() });
+      await updateCategory({ categoryId: editingId, name: editingName.trim() });
       setEditingId(null);
       setEditingName("");
-    } catch (e: any) {
-      setError(e?.message ?? "Failed to rename");
+    } catch (error: unknown) {
+      setError(errorMessage(error, "Failed to rename"));
     }
   };
 
@@ -179,8 +184,8 @@ export default function CategoriesPage() {
       await createCategory({ name: newName.trim(), x: addPosition.x, y: addPosition.y });
       setNewName("");
       setShowAddModal(false);
-    } catch (e: any) {
-      setError(e?.message ?? "Failed to create");
+    } catch (error: unknown) {
+      setError(errorMessage(error, "Failed to create"));
     }
   };
 
@@ -199,24 +204,24 @@ export default function CategoriesPage() {
 
   return (
     <DashboardLayout>
-      <div className="flex flex-col h-[calc(100vh-64px)] text-slate-100">
-        <div className="flex items-center justify-between border-b border-white/5 bg-[#0A0A0C] px-6 py-4">
+      <div className="flex flex-col h-[calc(100vh-64px)] text-zinc-900 dark:text-slate-100">
+        <div className="flex items-center justify-between border-b border-zinc-200/80 bg-white dark:bg-[#0A0A0C] dark:border-white/5 px-6 py-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-500/10 text-indigo-400">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
               <FolderTree className="h-5 w-5" />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-white">Category Canvas</h1>
-              <p className="text-xs text-slate-400">Drag nodes, double-click to add/rename, connect parent→child</p>
+              <h1 className="text-xl font-bold text-zinc-950 dark:text-white">Category Canvas</h1>
+              <p className="text-xs text-zinc-500 dark:text-slate-400">Drag nodes, double-click to add/rename, connect parent→child</p>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
-            <button onClick={zoomOut} className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 transition-colors">
+            <button onClick={zoomOut} className="p-2 rounded-lg bg-zinc-100 hover:bg-zinc-200 text-zinc-700 dark:bg-white/5 dark:hover:bg-white/10 dark:text-slate-300 transition-colors">
               <ZoomOut className="h-4 w-4" />
             </button>
-            <span className="text-xs text-slate-400 w-12 text-center">{Math.round(zoom * 100)}%</span>
-            <button onClick={zoomIn} className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 transition-colors">
+            <span className="text-xs text-zinc-500 dark:text-slate-400 w-12 text-center">{Math.round(zoom * 100)}%</span>
+            <button onClick={zoomIn} className="p-2 rounded-lg bg-zinc-100 hover:bg-zinc-200 text-zinc-700 dark:bg-white/5 dark:hover:bg-white/10 dark:text-slate-300 transition-colors">
               <ZoomIn className="h-4 w-4" />
             </button>
             <button
@@ -238,7 +243,7 @@ export default function CategoriesPage() {
 
         {!isAdmin ? (
           <div className="flex-1 flex items-center justify-center">
-            <div className="rounded-2xl border border-white/10 bg-white/5 p-6 text-slate-300">
+            <div className="rounded-2xl border border-zinc-200 bg-white p-6 text-zinc-600 dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
               Admin access required.
             </div>
           </div>
@@ -246,13 +251,19 @@ export default function CategoriesPage() {
           <div
             ref={canvasRef}
             data-canvas="true"
-            className="flex-1 relative overflow-hidden bg-[#0d0d12] cursor-grab active:cursor-grabbing"
+            className="flex-1 relative overflow-hidden bg-zinc-50 dark:bg-[#0d0d12] cursor-grab active:cursor-grabbing"
             onMouseDown={handleCanvasMouseDown}
             onMouseMove={handleCanvasMouseMove}
             onMouseUp={handleCanvasMouseUp}
             onMouseLeave={handleCanvasMouseUp}
             onDoubleClick={handleCanvasDoubleClick}
-            style={{ backgroundImage: `radial-gradient(circle, rgba(255,255,255,0.03) 1px, transparent 1px)`, backgroundSize: `${20 * zoom}px ${20 * zoom}px`, backgroundPosition: `${pan.x}px ${pan.y}px` }}
+            style={{
+              backgroundImage: theme === "dark"
+                ? `radial-gradient(circle, rgba(255,255,255,0.03) 1px, transparent 1px)`
+                : `radial-gradient(circle, rgba(0,0,0,0.04) 1px, transparent 1px)`,
+              backgroundSize: `${20 * zoom}px ${20 * zoom}px`,
+              backgroundPosition: `${pan.x}px ${pan.y}px`
+            }}
           >
             <svg
               className="absolute inset-0 pointer-events-none"
@@ -291,9 +302,9 @@ export default function CategoriesPage() {
                 <div
                   key={node._id}
                   className={cn(
-                    "absolute rounded-xl border-2 bg-[#1a1d2e] shadow-xl transition-shadow cursor-pointer select-none",
-                    selectedId === node._id ? "border-indigo-500 shadow-indigo-500/30" : "border-white/10 hover:border-white/20",
-                    connectingFrom === node._id && "ring-2 ring-green-500 ring-offset-2 ring-offset-[#0d0d12]"
+                    "absolute rounded-xl border-2 bg-white text-zinc-950 shadow-sm transition-shadow cursor-pointer select-none dark:bg-[#1a1d2e] dark:text-white",
+                    selectedId === node._id ? "border-indigo-500 shadow-indigo-500/30" : "border-zinc-200 hover:border-zinc-300 dark:border-white/10 dark:hover:border-white/20",
+                    connectingFrom === node._id && "ring-2 ring-green-500 ring-offset-2 ring-offset-zinc-50 dark:ring-offset-[#0d0d12]"
                   )}
                   style={{ left: node.x, top: node.y, width: NODE_WIDTH, height: NODE_HEIGHT }}
                   onMouseDown={(e) => handleNodeMouseDown(e, node)}
@@ -307,11 +318,11 @@ export default function CategoriesPage() {
                         onChange={(e) => setEditingName(e.target.value)}
                         onBlur={handleRename}
                         onKeyDown={(e) => { if (e.key === "Enter") handleRename(); if (e.key === "Escape") { setEditingId(null); setEditingName(""); } }}
-                        className="w-full bg-transparent text-center text-sm font-semibold text-white border-b border-indigo-500 outline-none"
+                        className="w-full bg-transparent text-center text-sm font-semibold text-zinc-950 border-b border-indigo-500 outline-none dark:text-white"
                         onClick={(e) => e.stopPropagation()}
                       />
                     ) : (
-                      <span className="text-sm font-semibold text-white truncate">{node.name}</span>
+                      <span className="text-sm font-semibold text-zinc-900 dark:text-white truncate">{node.name}</span>
                     )}
                   </div>
 
@@ -329,13 +340,13 @@ export default function CategoriesPage() {
             </div>
 
             {selectedId && (
-              <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-2 rounded-2xl border border-white/10 bg-[#1a1d2e]/95 px-4 py-3 shadow-2xl backdrop-blur-xl">
-                <span className="text-xs text-slate-400 mr-2">Selected: <strong className="text-white">{nodesById.get(selectedId)?.name}</strong></span>
+              <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-2 rounded-2xl border border-zinc-200 bg-white/95 px-4 py-3 shadow-xl backdrop-blur-xl dark:border-white/10 dark:bg-[#1a1d2e]/95 dark:shadow-2xl">
+                <span className="text-xs text-zinc-500 dark:text-slate-400 mr-2">Selected: <strong className="text-zinc-900 dark:text-white">{nodesById.get(selectedId)?.name}</strong></span>
                 <button
                   onClick={() => setConnectingFrom(selectedId)}
                   className={cn(
                     "inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
-                    connectingFrom === selectedId ? "bg-green-600 text-white" : "bg-white/5 text-slate-300 hover:bg-white/10"
+                    connectingFrom === selectedId ? "bg-green-600 text-white" : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200 dark:bg-white/5 dark:text-slate-300 dark:hover:bg-white/10"
                   )}
                 >
                   <Link2 className="h-3.5 w-3.5" />
@@ -344,7 +355,7 @@ export default function CategoriesPage() {
                 {nodesById.get(selectedId)?.parentId && (
                   <button
                     onClick={() => handleDisconnect(selectedId)}
-                    className="inline-flex items-center gap-1.5 rounded-full bg-white/5 px-3 py-1.5 text-xs font-medium text-slate-300 hover:bg-white/10 transition-colors"
+                    className="inline-flex items-center gap-1.5 rounded-full bg-zinc-100 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-200 dark:bg-white/5 dark:text-slate-300 dark:hover:bg-white/10 transition-colors"
                   >
                     <X className="h-3.5 w-3.5" />
                     Disconnect
@@ -352,7 +363,7 @@ export default function CategoriesPage() {
                 )}
                 <button
                   onClick={() => handleDelete(selectedId)}
-                  className="inline-flex items-center gap-1.5 rounded-full bg-red-500/10 px-3 py-1.5 text-xs font-semibold text-red-300 hover:bg-red-500/20 transition-colors"
+                  className="inline-flex items-center gap-1.5 rounded-full bg-red-500/10 px-3 py-1.5 text-xs font-semibold text-red-650 hover:bg-red-500/20 dark:text-red-300 transition-colors"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                   Delete
@@ -361,21 +372,21 @@ export default function CategoriesPage() {
             )}
 
             {connectingFrom && (
-              <div className="absolute top-6 left-1/2 -translate-x-1/2 rounded-full border border-green-500/30 bg-green-500/10 px-4 py-2 text-xs font-medium text-green-300 backdrop-blur-sm">
+              <div className="absolute top-6 left-1/2 -translate-x-1/2 rounded-full border border-green-500/30 bg-green-500/10 px-4 py-2 text-xs font-medium text-green-750 dark:text-green-300 backdrop-blur-sm">
                 <MousePointer2 className="inline h-3.5 w-3.5 mr-1.5" />
-                Click another node to set it as child of "{nodesById.get(connectingFrom)?.name}"
-                <button onClick={() => setConnectingFrom(null)} className="ml-2 text-green-400 hover:text-green-200">Cancel</button>
+                Click another node to set it as child of &quot;{nodesById.get(connectingFrom)?.name}&quot;
+                <button onClick={() => setConnectingFrom(null)} className="ml-2 text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-200">Cancel</button>
               </div>
             )}
           </div>
         )}
 
         {showAddModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShowAddModal(false)}>
-            <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#131728] p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/40 backdrop-blur-sm" onClick={() => setShowAddModal(false)}>
+            <div className="w-full max-w-sm rounded-2xl border border-zinc-200 bg-white p-6 shadow-2xl dark:border-white/10 dark:bg-[#131728]" onClick={(e) => e.stopPropagation()}>
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold text-white">New Category Node</h2>
-                <button onClick={() => setShowAddModal(false)} className="p-1.5 rounded-full text-slate-400 hover:bg-white/5 hover:text-white transition-colors">
+                <h2 className="text-lg font-semibold text-zinc-950 dark:text-white">New Category Node</h2>
+                <button onClick={() => setShowAddModal(false)} className="p-1.5 rounded-full text-zinc-450 hover:bg-zinc-100 hover:text-zinc-700 dark:text-slate-400 dark:hover:bg-white/5 dark:hover:text-white transition-colors">
                   <X className="h-5 w-5" />
                 </button>
               </div>
@@ -385,10 +396,10 @@ export default function CategoriesPage() {
                 onChange={(e) => setNewName(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") handleAddNode(); }}
                 placeholder="Category name..."
-                className="w-full rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-sm text-white placeholder:text-slate-600 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                className="w-full rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-950 placeholder:text-zinc-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-white/10 dark:bg-black/40 dark:text-white dark:placeholder:text-slate-600"
               />
               <div className="mt-4 flex items-center justify-end gap-3">
-                <button onClick={() => setShowAddModal(false)} className="rounded-full px-4 py-2 text-sm font-medium text-slate-400 hover:text-white transition-colors">
+                <button onClick={() => setShowAddModal(false)} className="rounded-full px-4 py-2 text-sm font-medium text-zinc-500 hover:text-zinc-800 dark:text-slate-400 dark:hover:text-white transition-colors">
                   Cancel
                 </button>
                 <button

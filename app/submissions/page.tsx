@@ -21,8 +21,8 @@ import type { Doc, Id } from "@/convex/_generated/dataModel";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { SubmitToolModal } from "@/components/SubmitToolModal";
 import { stackClientApp } from "@/stack/client";
+import { useAdminViewMode } from "@/components/AdminViewModeProvider";
 
-const ADMIN_EMAIL = "ahoo11official@gmail.com";
 type SubmissionStatus = Doc<"submissions">["status"];
 
 const statusStyles: Record<SubmissionStatus, string> = {
@@ -39,7 +39,7 @@ function statusLabel(status: SubmissionStatus) {
 
 export default function SubmissionsPage() {
   const user = useUser();
-  const isAdmin = user?.primaryEmail?.toLowerCase() === ADMIN_EMAIL;
+  const { isAdmin } = useAdminViewMode();
   const [filter, setFilter] = React.useState<SubmissionStatus | "all">("all");
   const [showSubmit, setShowSubmit] = React.useState(false);
   const [busyId, setBusyId] = React.useState<Id<"submissions"> | null>(null);
@@ -189,6 +189,12 @@ function SubmissionCard({
   busy: boolean;
   onReview: (decision: "approve" | "reject" | "needs_changes") => void;
 }) {
+  const currentTool = useQuery(
+    api.myFunctions.getTool,
+    submission.kind === "update" && submission.targetToolId
+      ? { toolId: submission.targetToolId }
+      : "skip",
+  );
   const reviewable =
     isAdmin && !["approved", "rejected"].includes(submission.status);
 
@@ -243,6 +249,10 @@ function SubmissionCard({
               <span key={tag} className="rounded bg-zinc-50 px-2 py-1 dark:bg-zinc-900">#{tag}</span>
             ))}
           </div>
+
+          {isAdmin && submission.kind === "update" && currentTool && (
+            <UpdateDiff current={currentTool} proposed={submission} />
+          )}
 
           {isAdmin && (
             <div className="mt-5 grid gap-3 rounded-lg border border-zinc-100 bg-zinc-50 p-4 text-xs text-zinc-600 sm:grid-cols-2 dark:border-zinc-800 dark:bg-zinc-900/60 dark:text-zinc-400">
@@ -359,5 +369,70 @@ function SubmissionCard({
         </div>
       </div>
     </article>
+  );
+}
+
+function UpdateDiff({
+  current,
+  proposed,
+}: {
+  current: Doc<"tools">;
+  proposed: Doc<"submissions">;
+}) {
+  const fields = [
+    { label: "Title", before: current.title, after: proposed.title },
+    { label: "Description", before: current.description, after: proposed.description },
+    { label: "Category", before: current.category, after: proposed.category },
+    { label: "Type", before: current.type, after: proposed.type },
+    { label: "Tags", before: current.tags, after: proposed.tags },
+    { label: "URL", before: current.url, after: proposed.url },
+    { label: "Logo", before: current.logo, after: proposed.logo },
+    { label: "Pricing", before: current.pricing, after: proposed.pricing },
+  ].filter(({ before, after }) => JSON.stringify(before ?? null) !== JSON.stringify(after ?? null));
+
+  const display = (value: string | string[] | undefined) => {
+    if (Array.isArray(value)) return value.length ? value.join(", ") : "Empty";
+    return value || "Empty";
+  };
+
+  return (
+    <div className="mt-5 rounded-lg border border-indigo-200 bg-indigo-50/60 p-4 dark:border-indigo-900/70 dark:bg-indigo-950/20">
+      <div className="mb-3">
+        <h3 className="text-sm font-semibold text-indigo-950 dark:text-indigo-200">Pending changes</h3>
+        <p className="mt-0.5 text-xs text-indigo-700 dark:text-indigo-400">
+          The live tool remains unchanged until this submission is approved.
+        </p>
+      </div>
+      {fields.length > 0 ? (
+        <div className="space-y-3">
+          {fields.map((field) => (
+            <div
+              key={field.label}
+              className="grid gap-1 border-t border-indigo-100 pt-3 text-xs sm:grid-cols-[90px_1fr_1fr] sm:gap-3 dark:border-indigo-900/50"
+            >
+              <span className="font-semibold text-zinc-700 dark:text-zinc-300">{field.label}</span>
+              <div>
+                <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-red-500">
+                  Current
+                </span>
+                <p className="break-words text-zinc-500 line-through decoration-red-400 dark:text-zinc-400">
+                  {display(field.before)}
+                </p>
+              </div>
+              <div>
+                <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-emerald-600">
+                  Proposed
+                </span>
+                <p className="break-words font-medium text-zinc-900 dark:text-zinc-100">
+                  {display(field.after)}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-xs text-zinc-500">No field differences found.</p>
+      )}
+    </div>
   );
 }

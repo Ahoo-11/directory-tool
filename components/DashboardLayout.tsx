@@ -5,13 +5,22 @@ import Link from "next/link";
 import { Sidebar } from "./Sidebar";
 import { UserButton, useUser } from "@stackframe/stack";
 import { stackClientApp } from "@/stack/client";
-import { Bell, Search, Sun, Moon, TrendingUp, Plus, Settings, FolderTree, Inbox } from "lucide-react";
+import { Bell, Search, Sun, Moon, TrendingUp, Plus, Settings, FolderTree, Inbox, ShieldCheck, UserRound } from "lucide-react";
 import { useTheme } from "next-themes";
+import { useAdminViewMode } from "./AdminViewModeProvider";
 
-export function DashboardLayout({ children }: { children: React.ReactNode }) {
+export function DashboardLayout({
+  children,
+  searchValue,
+  onSearchChange,
+}: {
+  children: React.ReactNode;
+  searchValue?: string;
+  onSearchChange?: (value: string) => void;
+}) {
   const user = useUser();
   const isLoggedIn = !!user;
-  const isAdmin = user?.primaryEmail?.toLowerCase() === "ahoo11official@gmail.com";
+  const { isActualAdmin, isAdmin, viewMode, setViewMode } = useAdminViewMode();
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = React.useState(false);
 
@@ -25,7 +34,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       {isLoggedIn && !isAdmin && <Sidebar />}
 
       {/* Main Content Area */}
-      <div className={isLoggedIn && !isAdmin ? "pl-64" : ""}>
+      <div className={isLoggedIn && !isAdmin ? "pl-20" : ""}>
         {/* Top Bar */}
         <header
           className={
@@ -55,6 +64,8 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400 dark:text-slate-500" />
                 <input
                   type="text"
+                  value={searchValue}
+                  onChange={(event) => onSearchChange?.(event.target.value)}
                   placeholder="Search tools..."
                   className="h-10 w-80 rounded-xl border border-zinc-200 bg-zinc-100 pl-10 pr-4 text-sm text-zinc-950 placeholder:text-zinc-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-white/10 dark:bg-white/5 dark:text-white dark:placeholder:text-slate-500"
                 />
@@ -63,6 +74,39 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
           </div>
 
           <div className="flex items-center gap-4">
+            {isActualAdmin && (
+              <div className="flex items-center rounded-xl border border-zinc-200 bg-zinc-100 p-1 dark:border-white/10 dark:bg-white/5">
+                <button
+                  type="button"
+                  onClick={() => setViewMode("admin")}
+                  title="View the app as an admin"
+                  aria-pressed={viewMode === "admin"}
+                  className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                    viewMode === "admin"
+                      ? "bg-white text-amber-700 shadow-sm dark:bg-white/10 dark:text-amber-300"
+                      : "text-zinc-500 hover:text-zinc-900 dark:text-slate-400 dark:hover:text-white"
+                  }`}
+                >
+                  <ShieldCheck className="h-4 w-4" />
+                  <span className="hidden xl:inline">Admin</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode("user")}
+                  title="Preview the app as a normal user"
+                  aria-pressed={viewMode === "user"}
+                  className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                    viewMode === "user"
+                      ? "bg-white text-indigo-700 shadow-sm dark:bg-white/10 dark:text-indigo-300"
+                      : "text-zinc-500 hover:text-zinc-900 dark:text-slate-400 dark:hover:text-white"
+                  }`}
+                >
+                  <UserRound className="h-4 w-4" />
+                  <span className="hidden xl:inline">User</span>
+                </button>
+              </div>
+            )}
+
             {isLoggedIn && (
               <button className="relative rounded-xl p-2 text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-950 dark:text-slate-400 dark:hover:bg-white/5 dark:hover:text-white">
                 <Bell className="h-5 w-5" />

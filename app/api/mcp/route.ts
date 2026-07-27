@@ -60,7 +60,94 @@ function optionalString(args: ToolArguments, name: string): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
+function optionalStringArray(args: ToolArguments, name: string): string[] | undefined {
+  const value = args[name];
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
+    throw new Error(`${name} must be an array of strings`);
+  }
+  return value.map((item) => item.trim()).filter(Boolean);
+}
+
+function optionalInteger(args: ToolArguments, name: string): number | undefined {
+  const value = args[name];
+  if (value === undefined) return undefined;
+  if (typeof value !== "number" || !Number.isFinite(value) || !Number.isInteger(value)) {
+    throw new Error(`${name} must be an integer`);
+  }
+  return value;
+}
+
 const tools = [
+  {
+    name: "list_tools",
+    description:
+      "List existing approved tools in the directory. Draft, held, and pending submissions are excluded.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        search: { type: "string", description: "Optional text search" },
+        category: { type: "string", description: "Optional exact category filter" },
+        limit: {
+          type: "integer",
+          minimum: 1,
+          maximum: 100,
+          description: "Maximum tools to return (default 50)",
+        },
+      },
+    },
+  },
+  {
+    name: "add_tool",
+    description:
+      "Add a tool to the approval queue using supplied details. It remains pending and is not published until an administrator approves it.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        title: { type: "string", description: "Tool name" },
+        description: { type: "string", description: "Short tool description" },
+        category: { type: "string", description: "Directory category" },
+        url: { type: "string", description: "Official website URL" },
+        type: { type: "string", description: "Tool type, such as Web App or API" },
+        tags: {
+          type: "array",
+          items: { type: "string" },
+          maxItems: 8,
+          description: "Optional discovery tags",
+        },
+        logo: { type: "string", description: "Optional logo URL or emoji" },
+        pricing: { type: "string", description: "Optional pricing model" },
+        notes: { type: "string", description: "Optional reviewer notes" },
+      },
+      required: ["title", "description", "category", "url"],
+    },
+  },
+  {
+    name: "update_tool",
+    description:
+      "Stage partial changes to an existing tool for human approval. The live tool is never modified unless the submission is approved.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        listing_id: { type: "string", description: "Existing directory tool ID" },
+        title: { type: "string", description: "Replacement tool name" },
+        description: { type: "string", description: "Replacement description" },
+        category: { type: "string", description: "Replacement category" },
+        url: { type: "string", description: "Replacement official URL" },
+        type: { type: "string", description: "Replacement tool type" },
+        tags: {
+          type: "array",
+          items: { type: "string" },
+          maxItems: 8,
+          description: "Complete replacement tag list",
+        },
+        logo: { type: "string", description: "Replacement logo URL or emoji" },
+        pricing: { type: "string", description: "Replacement pricing model" },
+        notes: { type: "string", description: "Reason or evidence for the proposed changes" },
+      },
+      required: ["listing_id"],
+    },
+  },
   {
     name: "preview_listing",
     description:
@@ -176,7 +263,41 @@ export async function POST(request: Request) {
 
   try {
     let result: unknown;
-    if (toolName === "preview_listing") {
+    if (toolName === "list_tools") {
+      result = await convex.action(api.submissions.listToolsFromIntegration, {
+        apiKey,
+        search: optionalString(toolArgs, "search"),
+        category: optionalString(toolArgs, "category"),
+        limit: optionalInteger(toolArgs, "limit"),
+      });
+    } else if (toolName === "add_tool") {
+      result = await convex.action(api.submissions.addToolFromIntegration, {
+        apiKey,
+        title: requiredString(toolArgs, "title"),
+        description: requiredString(toolArgs, "description"),
+        category: requiredString(toolArgs, "category"),
+        url: requiredString(toolArgs, "url"),
+        type: optionalString(toolArgs, "type"),
+        tags: optionalStringArray(toolArgs, "tags"),
+        logo: optionalString(toolArgs, "logo"),
+        pricing: optionalString(toolArgs, "pricing"),
+        notes: optionalString(toolArgs, "notes"),
+      });
+    } else if (toolName === "update_tool") {
+      result = await convex.action(api.submissions.updateToolFromIntegration, {
+        apiKey,
+        targetToolId: requiredString(toolArgs, "listing_id") as Id<"tools">,
+        title: optionalString(toolArgs, "title"),
+        description: optionalString(toolArgs, "description"),
+        category: optionalString(toolArgs, "category"),
+        url: optionalString(toolArgs, "url"),
+        type: optionalString(toolArgs, "type"),
+        tags: optionalStringArray(toolArgs, "tags"),
+        logo: optionalString(toolArgs, "logo"),
+        pricing: optionalString(toolArgs, "pricing"),
+        notes: optionalString(toolArgs, "notes"),
+      });
+    } else if (toolName === "preview_listing") {
       result = await convex.action(api.submissions.previewListingFromIntegration, {
         apiKey,
         url: requiredString(toolArgs, "url"),

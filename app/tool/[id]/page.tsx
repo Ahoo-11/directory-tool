@@ -7,16 +7,22 @@ import { Id } from "../../../convex/_generated/dataModel";
 import { MoveUpRight, Calendar, Star, Tag, ChevronLeft, Pencil, X, Check, Zap, Circle, Plus } from "lucide-react";
 import cn from "classnames";
 import { DashboardLayout } from "@/components/DashboardLayout";
-import { useUser } from "@stackframe/stack";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { ToolLogo } from "@/components/ToolLogo";
+import { useAdminViewMode } from "@/components/AdminViewModeProvider";
 
 export default function ToolPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const user = useUser();
-  const isAdmin = user?.primaryEmail?.toLowerCase() === "ahoo11official@gmail.com";
-  const tool = useQuery(api.myFunctions.getTool, { toolId: id as Id<"tools"> });
+  const { isAdmin } = useAdminViewMode();
+  const queriedTool = useQuery(api.myFunctions.getTool, { toolId: id as Id<"tools"> });
+  const tool =
+    queriedTool &&
+    !isAdmin &&
+    queriedTool.status !== "online" &&
+    queriedTool.status !== undefined
+      ? null
+      : queriedTool;
   const updateTool = useMutation(api.myFunctions.updateTool);
 
   const [isEditing, setIsEditing] = useState(false);

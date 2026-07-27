@@ -10,16 +10,20 @@ export function useSavedTools() {
 
   // Load from localStorage on mount
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        setSaved(new Set(parsed));
+    const timer = window.setTimeout(() => {
+      try {
+        const stored = localStorage.getItem(STORAGE_KEY);
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          setSaved(new Set(parsed));
+        }
+      } catch (error) {
+        console.error("Failed to load saved tools:", error);
       }
-    } catch (error) {
-      console.error("Failed to load saved tools:", error);
-    }
-    setIsLoaded(true);
+      setIsLoaded(true);
+    }, 0);
+
+    return () => window.clearTimeout(timer);
   }, []);
 
   // Save to localStorage whenever saved changes

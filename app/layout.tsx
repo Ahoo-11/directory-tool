@@ -5,6 +5,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import ConvexClientProvider from "@/components/ConvexClientProvider";
 import { ThemeProvider } from "@/components/ThemeProvider";
+import { AdminViewModeProvider } from "@/components/AdminViewModeProvider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -38,14 +39,16 @@ export default function RootLayout({
         <StackProvider app={stackClientApp}>
           <StackTheme>
             <ConvexClientProvider>
-              <ThemeProvider
-                attribute="class"
-                defaultTheme="light"
-                enableSystem={false}
-                disableTransitionOnChange
-              >
-                {children}
-              </ThemeProvider>
+              <AdminViewModeProvider>
+                <ThemeProvider
+                  attribute="class"
+                  defaultTheme="light"
+                  enableSystem={false}
+                  disableTransitionOnChange
+                >
+                  {children}
+                </ThemeProvider>
+              </AdminViewModeProvider>
             </ConvexClientProvider>
           </StackTheme>
         </StackProvider>

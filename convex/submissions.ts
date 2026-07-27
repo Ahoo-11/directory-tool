@@ -89,6 +89,21 @@ const enrichmentValidator = v.object({
   warnings: v.array(v.string()),
 });
 
+const integrationToolValidator = v.object({
+  id: v.id("tools"),
+  createdAt: v.number(),
+  title: v.string(),
+  description: v.string(),
+  category: v.string(),
+  type: v.optional(v.string()),
+  tags: v.array(v.string()),
+  url: v.string(),
+  logo: v.string(),
+  featured: v.boolean(),
+  status: v.literal("online"),
+  pricing: v.optional(v.string()),
+});
+
 type SocialLink = {
   platform: string;
   url: string;
@@ -146,6 +161,24 @@ type IntegrationStatusResult = {
   publishedToolId?: Id<"tools">;
   updatedAt: number;
 } | null;
+
+type IntegrationToolList = {
+  count: number;
+  tools: Array<{
+    id: Id<"tools">;
+    createdAt: number;
+    title: string;
+    description: string;
+    category: string;
+    type?: string;
+    tags: string[];
+    url: string;
+    logo: string;
+    featured: boolean;
+    status: "online";
+    pricing?: string;
+  }>;
+};
 
 type ReviewResult = {
   status: SubmissionStatus;
@@ -668,6 +701,210 @@ async function createSubmission(
   };
 }
 
+async function createManualIntegrationSubmission(
+  ctx: ActionCtx,
+  args: {
+    actor: Actor;
+    title: string;
+    description: string;
+    category: string;
+    url: string;
+    type?: string;
+    tags?: string[];
+    logo?: string;
+    pricing?: string;
+    notes?: string;
+  },
+): Promise<SubmitResult> {
+  const canonicalUrl = normalizeListingUrl(args.url);
+  const title = cleanText(args.title, 160);
+  const description = cleanText(args.description, 600);
+  const category = cleanText(args.category, 80);
+
+  if (!title || !description || !category) {
+    throw new Error("title, description, and category are required");
+  }
+
+  const duplicate: { toolId?: Id<"tools">; submissionId?: Id<"submissions"> } = await ctx.runQuery(
+    internal.submissions.findDuplicateInternal,
+    { canonicalUrl },
+  );
+  const status: SubmissionStatus = duplicate.toolId || duplicate.submissionId ? "duplicate" : "pending";
+  const warnings = ["Listing details were supplied manually and the website was not automatically verified."];
+  const tags = Array.from(
+    new Set((args.tags ?? []).map((tag) => cleanText(tag.toLowerCase(), 30)).filter(Boolean)),
+  ).slice(0, 8);
+
+  const submissionId: Id<"submissions"> = await ctx.runMutation(
+    internal.submissions.createSubmissionInternal,
+    {
+      kind: "create",
+      status,
+      source: "mcp",
+      submittedByType: args.actor.type,
+      submittedById: args.actor.id,
+      ...(args.actor.name ? { submittedByName: args.actor.name } : {}),
+      ...(args.actor.email ? { submittedByEmail: args.actor.email } : {}),
+      sourceUrl: args.url.trim(),
+      canonicalUrl,
+      title,
+      description,
+      category,
+      ...(args.type?.trim() ? { type: cleanText(args.type, 80) } : {}),
+      tags,
+      url: canonicalUrl,
+      logo: args.logo?.trim() || new URL("/favicon.ico", canonicalUrl).toString(),
+      ...(args.pricing?.trim() ? { pricing: cleanText(args.pricing, 80) } : {}),
+      socialLinks: [],
+      ...(args.notes?.trim() ? { notes: cleanText(args.notes, 2000) } : {}),
+      rawPayload: JSON.stringify({
+        title,
+        description,
+        category,
+        type: args.type,
+        tags,
+        url: args.url,
+        logo: args.logo,
+        pricing: args.pricing,
+      }),
+      extractionMethod: "submitted",
+      urlReachable: false,
+      ...(duplicate.toolId ? { duplicateToolId: duplicate.toolId } : {}),
+      ...(duplicate.submissionId ? { duplicateSubmissionId: duplicate.submissionId } : {}),
+      warnings,
+    },
+  );
+
+  return {
+    submissionId,
+    status,
+    title,
+    extractionMethod: "submitted",
+    warnings,
+  };
+}
+
+async function createManualIntegrationUpdate(
+  ctx: ActionCtx,
+  args: {
+    actor: Actor;
+    targetToolId: Id<"tools">;
+    title?: string;
+    description?: string;
+    category?: string;
+    url?: string;
+    type?: string;
+    tags?: string[];
+    logo?: string;
+    pricing?: string;
+    notes?: string;
+  },
+): Promise<SubmitResult> {
+  const hasChanges = [
+    args.title,
+    args.description,
+    args.category,
+    args.url,
+    args.type,
+    args.tags,
+    args.logo,
+    args.pricing,
+  ].some((value) => value !== undefined);
+  if (!hasChanges) throw new Error("At least one proposed change is required");
+
+  const current = await ctx.runQuery(internal.submissions.getPublishedToolInternal, {
+    toolId: args.targetToolId,
+  });
+  if (!current) throw new Error("Published tool not found");
+
+  const title = args.title === undefined ? current.title : cleanText(args.title, 160);
+  const description =
+    args.description === undefined ? current.description : cleanText(args.description, 600);
+  const category = args.category === undefined ? current.category : cleanText(args.category, 80);
+  if (!title || !description || !category) {
+    throw new Error("title, description, and category cannot be empty");
+  }
+
+  const url = normalizeListingUrl(args.url ?? current.url);
+  const conflict: { toolId?: Id<"tools">; submissionId?: Id<"submissions"> } =
+    await ctx.runQuery(internal.submissions.findUpdateConflictInternal, {
+      canonicalUrl: url,
+      targetToolId: args.targetToolId,
+    });
+  const status: SubmissionStatus = conflict.toolId || conflict.submissionId ? "duplicate" : "pending";
+  const tags =
+    args.tags === undefined
+      ? current.tags
+      : Array.from(
+          new Set(args.tags.map((tag) => cleanText(tag.toLowerCase(), 30)).filter(Boolean)),
+        ).slice(0, 8);
+  const warnings = ["Proposed MCP changes are staged and have not modified the live tool."];
+
+  const submissionId: Id<"submissions"> = await ctx.runMutation(
+    internal.submissions.createSubmissionInternal,
+    {
+      kind: "update",
+      status,
+      source: "mcp",
+      submittedByType: args.actor.type,
+      submittedById: args.actor.id,
+      ...(args.actor.name ? { submittedByName: args.actor.name } : {}),
+      ...(args.actor.email ? { submittedByEmail: args.actor.email } : {}),
+      sourceUrl: args.url?.trim() || current.url,
+      canonicalUrl: url,
+      targetToolId: args.targetToolId,
+      title,
+      description,
+      category,
+      ...(args.type === undefined
+        ? current.type
+          ? { type: current.type }
+          : {}
+        : args.type.trim()
+          ? { type: cleanText(args.type, 80) }
+          : {}),
+      tags,
+      url,
+      logo: args.logo?.trim() || current.logo,
+      ...(args.pricing === undefined
+        ? current.pricing
+          ? { pricing: current.pricing }
+          : {}
+        : args.pricing.trim()
+          ? { pricing: cleanText(args.pricing, 80) }
+          : {}),
+      socialLinks: [],
+      ...(args.notes?.trim() ? { notes: cleanText(args.notes, 2000) } : {}),
+      rawPayload: JSON.stringify({
+        targetToolId: args.targetToolId,
+        proposedChanges: {
+          title: args.title,
+          description: args.description,
+          category: args.category,
+          type: args.type,
+          tags: args.tags,
+          url: args.url,
+          logo: args.logo,
+          pricing: args.pricing,
+        },
+      }),
+      extractionMethod: "submitted",
+      urlReachable: false,
+      ...(conflict.toolId ? { duplicateToolId: conflict.toolId } : {}),
+      ...(conflict.submissionId ? { duplicateSubmissionId: conflict.submissionId } : {}),
+      warnings,
+    },
+  );
+
+  return {
+    submissionId,
+    status,
+    title,
+    extractionMethod: "submitted",
+    warnings,
+  };
+}
+
 export const previewListing = action({
   args: { url: v.string() },
   returns: enrichmentValidator,
@@ -744,6 +981,103 @@ export const submitListingFromIntegration = action({
   },
 });
 
+export const addToolFromIntegration = action({
+  args: {
+    apiKey: v.string(),
+    title: v.string(),
+    description: v.string(),
+    category: v.string(),
+    url: v.string(),
+    type: v.optional(v.string()),
+    tags: v.optional(v.array(v.string())),
+    logo: v.optional(v.string()),
+    pricing: v.optional(v.string()),
+    notes: v.optional(v.string()),
+  },
+  returns: v.object({
+    submissionId: v.id("submissions"),
+    status: statusValidator,
+    title: v.string(),
+    extractionMethod: extractionMethodValidator,
+    warnings: v.array(v.string()),
+  }),
+  handler: async (ctx, args): Promise<SubmitResult> => {
+    const actor = authenticateIntegration(args.apiKey);
+    return await createManualIntegrationSubmission(ctx, {
+      actor,
+      title: args.title,
+      description: args.description,
+      category: args.category,
+      url: args.url,
+      type: args.type,
+      tags: args.tags,
+      logo: args.logo,
+      pricing: args.pricing,
+      notes: args.notes,
+    });
+  },
+});
+
+export const updateToolFromIntegration = action({
+  args: {
+    apiKey: v.string(),
+    targetToolId: v.id("tools"),
+    title: v.optional(v.string()),
+    description: v.optional(v.string()),
+    category: v.optional(v.string()),
+    url: v.optional(v.string()),
+    type: v.optional(v.string()),
+    tags: v.optional(v.array(v.string())),
+    logo: v.optional(v.string()),
+    pricing: v.optional(v.string()),
+    notes: v.optional(v.string()),
+  },
+  returns: v.object({
+    submissionId: v.id("submissions"),
+    status: statusValidator,
+    title: v.string(),
+    extractionMethod: extractionMethodValidator,
+    warnings: v.array(v.string()),
+  }),
+  handler: async (ctx, args): Promise<SubmitResult> => {
+    const actor = authenticateIntegration(args.apiKey);
+    return await createManualIntegrationUpdate(ctx, {
+      actor,
+      targetToolId: args.targetToolId,
+      title: args.title,
+      description: args.description,
+      category: args.category,
+      url: args.url,
+      type: args.type,
+      tags: args.tags,
+      logo: args.logo,
+      pricing: args.pricing,
+      notes: args.notes,
+    });
+  },
+});
+
+export const listToolsFromIntegration = action({
+  args: {
+    apiKey: v.string(),
+    search: v.optional(v.string()),
+    category: v.optional(v.string()),
+    limit: v.optional(v.number()),
+  },
+  returns: v.object({
+    count: v.number(),
+    tools: v.array(integrationToolValidator),
+  }),
+  handler: async (ctx, args): Promise<IntegrationToolList> => {
+    authenticateIntegration(args.apiKey);
+    return await ctx.runQuery(internal.submissions.listPublishedToolsInternal, {
+      search: args.search,
+      category: args.category,
+      limit: Math.max(1, Math.min(Math.floor(args.limit ?? 50), 100)),
+    });
+  },
+});
+
 export const getSubmissionStatusFromIntegration = action({
   args: {
     apiKey: v.string(),
@@ -815,6 +1149,43 @@ export const findDuplicateInternal = internalQuery({
   },
 });
 
+export const findUpdateConflictInternal = internalQuery({
+  args: {
+    canonicalUrl: v.string(),
+    targetToolId: v.id("tools"),
+  },
+  returns: v.object({
+    toolId: v.optional(v.id("tools")),
+    submissionId: v.optional(v.id("submissions")),
+  }),
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{ toolId?: Id<"tools">; submissionId?: Id<"submissions"> }> => {
+    const tools = await ctx.db.query("tools").collect();
+    const conflictingTool = tools.find((candidate) => {
+      if (candidate._id === args.targetToolId || !candidate.url) return false;
+      try {
+        return normalizeListingUrl(candidate.canonicalUrl ?? candidate.url) === args.canonicalUrl;
+      } catch {
+        return false;
+      }
+    });
+    const submissions = await ctx.db
+      .query("submissions")
+      .withIndex("by_canonical_url", (q) => q.eq("canonicalUrl", args.canonicalUrl))
+      .collect();
+    const conflictingSubmission = submissions.find(
+      (submission) => ["pending", "needs_changes", "duplicate"].includes(submission.status),
+    );
+
+    return {
+      ...(conflictingTool ? { toolId: conflictingTool._id } : {}),
+      ...(conflictingSubmission ? { submissionId: conflictingSubmission._id } : {}),
+    };
+  },
+});
+
 export const createSubmissionInternal = internalMutation({
   args: {
     kind: kindValidator,
@@ -847,7 +1218,7 @@ export const createSubmissionInternal = internalMutation({
     warnings: v.array(v.string()),
   },
   returns: v.id("submissions"),
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<Id<"submissions">> => {
     const now = Date.now();
     const submissionId = await ctx.db.insert("submissions", {
       ...args,
@@ -865,6 +1236,73 @@ export const createSubmissionInternal = internalMutation({
       createdAt: now,
     });
     return submissionId;
+  },
+});
+
+export const listPublishedToolsInternal = internalQuery({
+  args: {
+    search: v.optional(v.string()),
+    category: v.optional(v.string()),
+    limit: v.number(),
+  },
+  returns: v.object({
+    count: v.number(),
+    tools: v.array(integrationToolValidator),
+  }),
+  handler: async (ctx, args): Promise<IntegrationToolList> => {
+    const search = args.search?.trim().toLowerCase();
+    const category = args.category?.trim().toLowerCase();
+    const published = (await ctx.db.query("tools").order("desc").collect()).filter(
+      (tool) => tool.status === "online" || tool.status === undefined,
+    );
+    const filtered = published.filter((tool) => {
+      if (category && category !== "all" && tool.category.toLowerCase() !== category) return false;
+      if (!search) return true;
+      return `${tool.title} ${tool.description} ${tool.category} ${tool.tags.join(" ")}`
+        .toLowerCase()
+        .includes(search);
+    });
+
+    return {
+      count: filtered.length,
+      tools: filtered.slice(0, args.limit).map((tool) => ({
+        id: tool._id,
+        createdAt: tool._creationTime,
+        title: tool.title,
+        description: tool.description,
+        category: tool.category,
+        type: tool.type,
+        tags: tool.tags,
+        url: tool.url,
+        logo: tool.logo,
+        featured: tool.featured,
+        status: "online" as const,
+        pricing: tool.pricing,
+      })),
+    };
+  },
+});
+
+export const getPublishedToolInternal = internalQuery({
+  args: { toolId: v.id("tools") },
+  returns: v.union(integrationToolValidator, v.null()),
+  handler: async (ctx, args): Promise<IntegrationToolList["tools"][number] | null> => {
+    const tool = await ctx.db.get(args.toolId);
+    if (!tool || (tool.status !== "online" && tool.status !== undefined)) return null;
+    return {
+      id: tool._id,
+      createdAt: tool._creationTime,
+      title: tool.title,
+      description: tool.description,
+      category: tool.category,
+      type: tool.type,
+      tags: tool.tags,
+      url: tool.url,
+      logo: tool.logo,
+      featured: tool.featured,
+      status: "online",
+      pricing: tool.pricing,
+    };
   },
 });
 
