@@ -22,15 +22,11 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# Build-time environment variables
-# These MUST be passed as Build Arguments in Dokploy
-ARG CONVEX_DEPLOY_KEY
+# Optional public build arguments for non-Server-Agent builds
 ARG NEXT_PUBLIC_CONVEX_URL
 ARG NEXT_PUBLIC_STACK_PROJECT_ID
 ARG NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY
 
-# Set them as ENV so they are available to the build scripts
-ENV CONVEX_DEPLOY_KEY=${CONVEX_DEPLOY_KEY}
 ENV NEXT_PUBLIC_CONVEX_URL=${NEXT_PUBLIC_CONVEX_URL}
 ENV NEXT_PUBLIC_STACK_PROJECT_ID=${NEXT_PUBLIC_STACK_PROJECT_ID}
 ENV NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=${NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY}
@@ -38,17 +34,21 @@ ENV NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=${NEXT_PUBLIC_STACK_PUBLISHABLE_CLI
 # Disable Next.js telemetry during build
 ENV NEXT_TELEMETRY_DISABLED=1
 
-# Build the application
-# We use a conditional to deploy Convex functions if the key is present
-RUN if [ -n "$CONVEX_DEPLOY_KEY" ]; then \
-      echo "Generating Convex types..." && \
-      npx convex codegen && \
-      echo "Deploying Convex functions..." && \
-      npx convex deploy --cmd "npm run build"; \
+# Server Agent creates .env before the image build. Bind it only for this RUN
+# instruction so secrets are available to Convex but never copied into an image
+# layer. Other builders can continue using the public ARG values above.
+RUN --mount=type=bind,source=.,target=/run/build-context,ro \
+    if [ -f /run/build-context/.env ]; then \
+      set -a && . /run/build-context/.env && set +a && \
+      if [ -n "$CONVEX_DEPLOY_KEY" ]; then \
+        echo "Deploying Convex functions and building the application..." && \
+        npx convex deploy --cmd "npm run build"; \
+      else \
+        echo "Building with configured public environment..." && \
+        npm run build; \
+      fi; \
     else \
-      echo "Generating Convex types..." && \
-      npx convex codegen && \
-      echo "Warning: CONVEX_DEPLOY_KEY not found, skipping convex deploy and running standard build..." && \
+      echo "No Server Agent environment file found; building with Docker ARG values..." && \
       npm run build; \
     fi
 
