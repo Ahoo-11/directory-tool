@@ -1,4 +1,7 @@
 import type { UserIdentity } from "convex/server";
+import { createHash } from "crypto";
+import type { ActionCtx } from "../_generated/server";
+import { internal } from "../_generated/api";
 
 export const ADMIN_EMAIL = "ahoo11official@gmail.com";
 
@@ -56,4 +59,16 @@ export function authenticateIntegration(apiKey: string): Actor {
   }
 
   throw new Error("Invalid integration API key");
+}
+
+export async function authenticateMcpKey(ctx: ActionCtx, apiKey: string): Promise<Actor | null> {
+  const keyHash = createHash("sha256").update(apiKey).digest("hex");
+  const key = await ctx.runQuery(internal.mcpKeys.lookupApiKeyByHash, { keyHash });
+  if (!key) return null;
+
+  return {
+    type: "integration",
+    id: key.ownerUserId,
+    name: key.ownerName,
+  };
 }
