@@ -3,7 +3,17 @@ import type { Id } from "./_generated/dataModel";
 import type { ActionCtx } from "./_generated/server";
 import { action, internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { internal } from "./_generated/api";
-import { assertAdmin, assertAuthenticated, authenticateIntegration, type Actor } from "./lib/auth";
+import { assertAdmin, assertAuthenticated, authenticateIntegration, authenticateMcpKey, type Actor } from "./lib/auth";
+
+async function authenticateIntegrationKey(ctx: ActionCtx, apiKey: string): Promise<Actor> {
+  try {
+    return authenticateIntegration(apiKey);
+  } catch {
+    const actor = await authenticateMcpKey(ctx, apiKey);
+    if (actor) return actor;
+    throw new Error("Invalid integration API key");
+  }
+}
 
 const kindValidator = v.union(v.literal("create"), v.literal("update"), v.literal("claim"));
 const statusValidator = v.union(
@@ -920,8 +930,8 @@ export const previewListingFromIntegration = action({
     url: v.string(),
   },
   returns: enrichmentValidator,
-  handler: async (_ctx, args): Promise<Enrichment> => {
-    authenticateIntegration(args.apiKey);
+  handler: async (ctx, args): Promise<Enrichment> => {
+    await authenticateIntegrationKey(ctx, args.apiKey);
     return await enrichListingUrl(args.url);
   },
 });
@@ -969,7 +979,7 @@ export const submitListingFromIntegration = action({
     warnings: v.array(v.string()),
   }),
   handler: async (ctx, args): Promise<SubmitResult> => {
-    const actor = authenticateIntegration(args.apiKey);
+    const actor = await authenticateIntegrationKey(ctx, args.apiKey);
     return await createSubmission(ctx, {
       actor,
       source: "mcp",
@@ -1002,7 +1012,7 @@ export const addToolFromIntegration = action({
     warnings: v.array(v.string()),
   }),
   handler: async (ctx, args): Promise<SubmitResult> => {
-    const actor = authenticateIntegration(args.apiKey);
+    const actor = await authenticateIntegrationKey(ctx, args.apiKey);
     return await createManualIntegrationSubmission(ctx, {
       actor,
       title: args.title,
@@ -1040,7 +1050,7 @@ export const updateToolFromIntegration = action({
     warnings: v.array(v.string()),
   }),
   handler: async (ctx, args): Promise<SubmitResult> => {
-    const actor = authenticateIntegration(args.apiKey);
+    const actor = await authenticateIntegrationKey(ctx, args.apiKey);
     return await createManualIntegrationUpdate(ctx, {
       actor,
       targetToolId: args.targetToolId,
@@ -1069,7 +1079,7 @@ export const listToolsFromIntegration = action({
     tools: v.array(integrationToolValidator),
   }),
   handler: async (ctx, args): Promise<IntegrationToolList> => {
-    authenticateIntegration(args.apiKey);
+    await authenticateIntegrationKey(ctx, args.apiKey);
     return await ctx.runQuery(internal.submissions.listPublishedToolsInternal, {
       search: args.search,
       category: args.category,
@@ -1095,7 +1105,7 @@ export const getSubmissionStatusFromIntegration = action({
     v.null(),
   ),
   handler: async (ctx, args): Promise<IntegrationStatusResult> => {
-    const actor = authenticateIntegration(args.apiKey);
+    const actor = await authenticateIntegrationKey(ctx, args.apiKey);
     return await ctx.runQuery(internal.submissions.getIntegrationSubmissionInternal, {
       submissionId: args.submissionId,
       submittedById: actor.id,

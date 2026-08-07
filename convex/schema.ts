@@ -2,6 +2,19 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
 export default defineSchema({
+  mcpKeys: defineTable({
+    name: v.string(),
+    keyPrefix: v.string(),
+    keyHash: v.string(),
+    ownerUserId: v.string(),
+    ownerName: v.optional(v.string()),
+    revoked: v.boolean(),
+    lastUsedAt: v.optional(v.number()),
+    createdAt: v.number(),
+  })
+    .index("by_keyHash", ["keyHash"])
+    .index("by_owner", ["ownerUserId"]),
+
   tools: defineTable({
     title: v.string(),
     description: v.string(),
